@@ -7,7 +7,7 @@
 window.Games = {
     list: [
         { id: 'soccer', name: 'Soccer', file: 'play.html', accent: '#2ecc71', ground: 'grass' },
-        { id: 'volleyball', name: 'Volleyball', file: 'games/volleyball.html', accent: '#ff9f43', ground: 'sand' }
+        { id: 'volleyball', name: 'Volleyball', file: 'play.html', accent: '#ff9f43', ground: 'sand' }
     ],
     current: null,
     define(def) {

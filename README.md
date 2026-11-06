@@ -3,7 +3,7 @@
 A monorepo of small browser games (plain HTML and JS, no framework, no build step) behind one hub world.
 
 - `index.html`: the hub
-- `play.html?game=<id>`: the one game page; `games/index.js` lists the games, `games/<id>.js` holds a game's rules ([docs/GAMES.md](docs/GAMES.md)); `games/volleyball.html` is still its own page
+- `play.html?game=<id>`: the one game page; `games/index.js` lists the games, `games/<id>.js` holds a game's rules ([docs/GAMES.md](docs/GAMES.md))
 - `shared/`: code every page uses: the game engine (`core.js`, `modes.js`, `render.js`, `net.js`, `main.js`) and the cosmetics (`shared/cosmetics/load.js` lists the packs)
 - `supabase/`: backend, see [supabase/README.md](supabase/README.md)
 

@@ -41,7 +41,7 @@ $('g-name').textContent = G.name;
 $('g-subtitle').textContent = G.subtitle;
 $('start-btn').textContent = $('ol-start').textContent = G.startLabel;
 $('g-hint').textContent = `Enter: start · P / Esc: pause · M: mute · ${G.hint}`;
-$('g-action').textContent = ACT.name;
+$('g-action').textContent = ACT.name + (ACT.tip ? ` ${ACT.tip}` : '');
 $('g-over').textContent = G.overLabel;
 for (const id of ['field-setting', 'ol-field-setting']) $(id).classList.toggle('hide', FIELDS.length < 2);
 

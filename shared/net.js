@@ -182,7 +182,6 @@ function readOnlineForm() {
 
 async function netOpen(code, asHost) {
     if (net.active || !readOnlineForm()) return;
-    const name = netStore.name;
     olStatus(asHost ? 'Creating room…' : `Joining room ${code}…`);
     setOlBusy(true);
     let ch, hostId = '';
@@ -202,8 +201,8 @@ async function netOpen(code, asHost) {
     net.saved = { ...settings };
     Object.assign(net, {
         active: true, isHost: asHost, inMatch: false, code, channel: ch,
-        hostId: asHost ? net.id : hostId, roster: {}, seats: asHost ? { 1: net.id } : {},
-        inputs: {}, snaps: [], mySeat: asHost ? 1 : 0, fx: [], gch: null, gchs: {}, helloInfo: {}, pred: null
+        hostId: asHost ? net.id : hostId, roster: {}, seats: asHost && !G.pickSeats ? { 1: net.id } : {}, wantSeq: 0,
+        inputs: {}, snaps: [], mySeat: asHost && !G.pickSeats ? 1 : 0, fx: [], gch: null, gchs: {}, helloInfo: {}, pred: null
     });
     if (asHost) { settings.opponent = 'human'; settings.mates = 'human'; }
     netUpdateRec();
@@ -227,7 +226,7 @@ async function netOpen(code, asHost) {
             const t0 = Date.now();
             try { await ch.track({ host: asHost, t: t0 }); } catch (e) { /* retried by Supabase */ }
             if (asHost) {
-                olStatus('Share the room code with your friends.'); netHostSync();
+                olStatus(G.pickSeats ? netPickStatus() : 'Share the room code with your friends.'); netHostSync();
                 // ?nettest has no rooms table, so detect a duplicate host from presence instead
                 if (LOCAL_TEST) net.joinTimer = setTimeout(() => {
                     if (!net.active || !net.isHost || net.channel !== ch || net.inMatch) return;
@@ -238,7 +237,7 @@ async function netOpen(code, asHost) {
                 }, 1200);
             } else {
                 olStatus('Looking for the host…');
-                netOpenGuestLine(code, name);
+                netOpenGuestLine(code);
                 net.joinTimer = setTimeout(() => {
                     if (net.active && !net.isHost) netLeave(`The host of room ${code} is not answering. Check the code and try again.`, true);
                 }, 8000);
@@ -250,7 +249,7 @@ async function netOpen(code, asHost) {
 }
 
 // Guest: open our own line to the host and say hello until the host lists us in the lobby
-function netOpenGuestLine(code, name) {
+function netOpenGuestLine(code) {
     const gch = netChan(`ws:${code}:g:${net.id}`);
     net.gch = gch;
     gch.subscribe((status) => {
@@ -258,7 +257,7 @@ function netOpenGuestLine(code, name) {
         if (status === 'SUBSCRIBED') {
             const hello = () => {
                 if (!net.active || net.isHost || net.gch !== gch || net.roster[net.id]) { clearInterval(net.helloTimer); return; }
-                netSend('hello', { game: G.id, name, skin: settings.p1Skin, hat: settings.p1Hat, boots: settings.p1Boots, acc: settings.p1Acc });
+                netSend('hello', netHello());
             };
             clearInterval(net.helloTimer);
             net.helloTimer = setInterval(hello, 1000);
@@ -267,6 +266,10 @@ function netOpenGuestLine(code, name) {
             netLeave('Could not open a line to the host. Check that the database migrations are applied.', true);
         }
     });
+}
+
+function netHello(extra) {
+    return { game: G.id, name: netStore.name || 'Player', skin: settings.p1Skin, hat: settings.p1Hat, boots: settings.p1Boots, acc: settings.p1Acc, ...extra };
 }
 
 // Host: listen on one guest's line. The topic carries the guest's verified id, so payloads are never trusted for identity.
@@ -287,7 +290,11 @@ function netOnHello(uid, m) {
     if (!net.isHost || !m || typeof m !== 'object') return;
     if ((m.game || 'soccer') !== G.id) return;   // someone opened this code in a different Wobbly game
     const prev = net.helloInfo[uid];
-    net.helloInfo[uid] = { name: String(m.name || 'Player').slice(0, 12), skin: Cosmetics.resolve('skin', m.skin), hat: Cosmetics.resolve('hat', m.hat), boots: Cosmetics.resolve('boots', m.boots), acc: Cosmetics.resolve('acc', m.acc), t: prev ? prev.t : Date.now() };
+    // Seat requests ride on hello (guests have no other message to the host in the lobby).
+    // wq counts the guest's requests, so a resent or stale hello never repeats an old one.
+    const wq = Math.max(0, +m.wq || 0), lastWq = prev ? prev.wq : 0;
+    net.helloInfo[uid] = { name: String(m.name || 'Player').slice(0, 12), skin: Cosmetics.resolve('skin', m.skin), hat: Cosmetics.resolve('hat', m.hat), boots: Cosmetics.resolve('boots', m.boots), acc: Cosmetics.resolve('acc', m.acc), t: prev ? prev.t : Date.now(), wq: Math.max(wq, lastWq) };
+    if (G.pickSeats && wq > lastWq) netSetSeat(uid, m.want);
     netHostSync();
 }
 
@@ -347,13 +354,13 @@ function netHostSync() {
         if (id === net.id) continue;
         netListenGuest(id);
         const h = net.helloInfo[id];
-        if (h) roster[id] = { ...h };
+        if (h) { const { wq, ...pub } = h; roster[id] = pub; }
     }
     for (const id of Object.keys(net.gchs)) if (!ps[id]) netDropGuest(id);
     if (!roster[net.id]) roster[net.id] = { name: netStore.name || 'Player', skin: settings.p1Skin, hat: settings.p1Hat, boots: settings.p1Boots, acc: settings.p1Acc, t: 0 };
     net.roster = roster;
     const max = settings.teams === 2 ? 4 : 2;
-    for (const s of [2, 3, 4]) {
+    for (const s of [1, 2, 3, 4]) {
         const id = net.seats[s];
         if (!id) continue;
         if (!roster[id] || (!net.inMatch && s > max)) {
@@ -361,13 +368,49 @@ function netHostSync() {
             if (net.inMatch) netSeatToBot(s);
         }
     }
-    if (!net.inMatch) {
+    if (!net.inMatch && !G.pickSeats) {
         const seated = new Set(Object.values(net.seats));
         const waiting = Object.keys(roster).filter(id => !seated.has(id)).sort((a, b) => roster[a].t - roster[b].t);
         for (let s = 2; s <= max && waiting.length; s++) if (!net.seats[s]) net.seats[s] = waiting.shift();
     }
+    net.mySeat = 0;
+    for (const s in net.seats) if (net.seats[s] === net.id) net.mySeat = +s;
     netSend('lobby', netLobbyPayload());
     if (net.inMatch) netSetTags(); else renderLobby();
+}
+
+// Seat picking (G.pickSeats): players click a seat instead of being seated in order of arrival.
+// Host: put a player in a seat (0 = no seat, they watch). Only in the lobby, and only into an empty seat.
+function netSetSeat(id, s) {
+    if (!net.isHost || net.inMatch) return false;
+    const max = settings.teams === 2 ? 4 : 2;
+    s = s | 0;
+    if (s < 0 || s > max || (s && net.seats[s] && net.seats[s] !== id)) return false;
+    for (const k of Object.keys(net.seats)) if (net.seats[k] === id) delete net.seats[k];
+    if (s) net.seats[s] = id;
+    return true;
+}
+
+// Anyone: click an empty seat to take it, your own seat to get up. The host can also clear someone else's seat.
+function netSeatClick(s) {
+    if (!net.active || net.inMatch) return;
+    Sound.init(); Sound.click();
+    const id = net.seats[s];
+    let want;
+    if (id === net.id) want = 0;
+    else if (!id) want = s;
+    else if (net.isHost) { delete net.seats[s]; netHostSync(); return; }
+    else return;
+    if (net.isHost) { netSetSeat(net.id, want); netHostSync(); olStatus(netPickStatus()); return; }
+    net.wantSeq = (net.wantSeq || 0) + 1;
+    netSend('hello', netHello({ want, wq: net.wantSeq }));
+    olStatus(want ? `Joining ${s % 2 ? 'Blue' : 'Red'}…` : 'Leaving your seat…');
+}
+
+function netPickStatus() {
+    const team = net.mySeat ? (net.mySeat % 2 ? 'Blue' : 'Red') : '';
+    if (net.isHost) return team ? `You're on ${team}. Share the room code, then kick off when everyone has a seat.` : 'Share the room code. Everyone clicks a seat on Blue or Red.';
+    return team ? `You're on ${team}. Waiting for the host to kick off…` : 'Click a seat on Blue or Red to play. Without a seat you watch.';
 }
 
 function netSeatToBot(s) {
@@ -383,7 +426,7 @@ function netSeatToBot(s) {
 
 function netHostStart(fromLobby) {
     if (!net.isHost) return;
-    if (fromLobby && Object.keys(net.seats).length < 2) { olStatus('Waiting for at least one more player.', true); return; }
+    if (fromLobby && Object.keys(net.seats).length < 2) { olStatus(G.pickSeats ? 'Pick teams first: at least two players need a seat.' : 'Waiting for at least one more player.', true); return; }
     settings.opponent = 'human'; settings.mates = 'human';
     net.inMatch = true; net.inputs = {}; net.fx = [];
     onlineScreen.classList.add('hidden');
@@ -407,13 +450,13 @@ function netHostToLobby() {
     net.inMatch = false; netUpdateRec();
     netSend('tolobby', { host: net.id });
     netEnterLobbyUI();
-    olStatus('Back in the lobby. Kick off when everyone is ready.');
+    olStatus(G.pickSeats ? 'Back in the lobby. Change seats if you like, then kick off.' : 'Back in the lobby. Kick off when everyone is ready.');
     netHostSync();
 }
 function netBackToLobby() {
     net.inMatch = false;
     netEnterLobbyUI();
-    olStatus(net.mySeat ? 'Waiting for the host to kick off…' : 'You are watching this room.');
+    olStatus(G.pickSeats ? netPickStatus() : net.mySeat ? 'Waiting for the host to kick off…' : 'You are watching this room.');
 }
 
 function netSeatName(s, fallback) {
@@ -459,7 +502,7 @@ function netOnLobby(m) {
     if (net.inMatch) { netSetTags(); return; }
     applyHostSettings(m.s);
     if (m.inMatch) { netOnStart(m); return; }   // joined mid-match: watch it
-    olStatus(net.mySeat ? 'Waiting for the host to kick off…' : 'The room is full, so you are watching.');
+    olStatus(G.pickSeats ? netPickStatus() : net.mySeat ? 'Waiting for the host to kick off…' : 'The room is full, so you are watching.');
     renderLobby();
 }
 function netOnStart(m) {
@@ -597,7 +640,8 @@ function netPredictSelf() {
     const lead = Math.min(6, (performance.now() - net.latestAt) / STEP + NET_LEAD_TICKS);
     const lean = (net.local.r ? 1 : 0) - (net.local.l ? 1 : 0);
     const grounded = A[1] + p.radius >= CONFIG.groundY - 2;
-    let tx = A[0] + A[3] * lead + (grounded ? lean * CONFIG.walkAccel * lead * lead / 4 : 0);
+    let tx = A[0] + A[3] * lead + lean * (grounded ? CONFIG.walkAccel : CONFIG.airAccel) * lead * lead / 4;
+    if (G.playerRange) { const [lo, hi] = G.playerRange(p); tx = Math.max(lo, Math.min(hi, tx)); }   // never draw ourselves through a wall
     let ty = A[1] + A[4] * lead;
     if (ty + p.radius > CONFIG.groundY) ty = CONFIG.groundY - p.radius;
     const a = net.pred;
@@ -640,13 +684,55 @@ function showOlView() {
     $('ol-start').classList.toggle('hide', !(net.active && net.isHost));
     $('ol-back').textContent = net.active ? 'Leave' : 'Back';
 }
+// G.pickSeats: Blue (odd seats) on the left, Red (even seats) on the right, each seat a button; people without a seat are listed below
+function renderSeatButtons(box, max, two) {
+    for (const t of [1, 2]) {
+        const h = document.createElement('div');
+        h.className = `ol-team-head t${t}`;
+        h.textContent = t === 1 ? 'Blue' : 'Red';
+        box.appendChild(h);
+    }
+    for (let s = 1; s <= max; s++) {
+        const id = net.seats[s], who = id && net.roster[id], mine = id === net.id, t = s % 2 ? 1 : 2;
+        const teamName = t === 1 ? 'Blue' : 'Red';
+        const b = document.createElement('button');
+        let can = false;
+        if (who) {
+            b.textContent = who.name + (mine ? ' (you)' : '') + (id === net.hostId ? ' ★' : '');
+            if (mine) { can = true; b.title = 'Click to leave this seat'; }
+            else if (net.isHost) { can = true; b.title = `Take ${who.name} off ${teamName}`; }
+        } else {
+            b.textContent = `+ Join ${teamName}`;
+            b.title = two ? `Sit on ${teamName}. Seats nobody takes are played by a bot.` : `Sit on ${teamName}`;
+            can = true;
+        }
+        b.className = `ol-seat t${t}` + (who ? '' : ' empty') + (mine ? ' mine' : '') + (can ? ' can' : '');
+        if (can) b.addEventListener('click', () => { netSeatClick(s); b.blur(); });
+        box.appendChild(b);
+    }
+    const seatedIds = new Set(Object.values(net.seats));
+    const bench = Object.keys(net.roster).filter(id => !seatedIds.has(id));
+    if (bench.length) {
+        const d = document.createElement('div');
+        d.className = 'ol-bench';
+        d.append('No team yet: ');
+        bench.forEach((id, i) => {
+            const nm = document.createElement('b');
+            nm.textContent = net.roster[id].name + (id === net.id ? ' (you)' : '');
+            d.append(i ? ', ' : '', nm);
+        });
+        box.appendChild(d);
+    }
+}
 function renderLobby() {
     if (!net.active) return;
     $('ol-room-code').textContent = net.code;
     const two = settings.teams === 2, max = two ? 4 : 2;
     const box = $('ol-players');
     box.innerHTML = '';
-    for (let s = 1; s <= max; s++) {
+    box.classList.toggle('ol-pick', !!G.pickSeats);
+    if (G.pickSeats) renderSeatButtons(box, max, two);
+    else for (let s = 1; s <= max; s++) {
         const id = net.seats[s], who = id && net.roster[id];
         const d = document.createElement('div');
         d.className = `ol-seat t${s % 2 ? 1 : 2}` + (who ? '' : ' empty');
@@ -678,7 +764,7 @@ function renderLobby() {
     const seated = new Set(Object.values(net.seats));
     const watchers = Object.keys(net.roster).filter(id => !seated.has(id)).length;
     $('ol-summary').textContent = [m.name + (len ? ` · ${len}` : ''), FIELDS.length > 1 && `${fieldDef().name} field`, two ? '2v2' : '1v1',
-        watchers ? `${watchers} watching` : ''].filter(Boolean).join(' · ');
+        G.pickSeats && two && 'empty seats get bots', watchers ? `${watchers} ${G.pickSeats ? 'without a team' : 'watching'}` : ''].filter(Boolean).join(' · ');
     $('ol-start').disabled = Object.keys(net.seats).length < 2;
 }
 

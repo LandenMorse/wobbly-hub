@@ -293,6 +293,7 @@ class Actor {
         this.handleCollisions();
 
         if (this.isPlayer) {
+            ACT.update?.(this, onGround);
             if (this.isCharging && onGround) {
                 if (this.chargeAmount < this.maxCharge) {
                     this.chargeAmount++;
@@ -705,7 +706,7 @@ const sim = {
 function copyActor(dst, src) {
     dst.x = src.x; dst.y = src.y; dst.vx = src.vx; dst.vy = src.vy;
     dst.angle = src.angle; dst.angularVelocity = src.angularVelocity; dst.targetAngle = src.targetAngle;
-    dst.playerNum = src.playerNum;
+    dst.playerNum = src.playerNum; dst.gScale = src.gScale;
     dst.chargeAmount = 0; dst.isCharging = false;
     dst.input.left = false; dst.input.right = false;
 }
@@ -861,26 +862,26 @@ function updateInfo() {
     } else if (m.kind === 'endless') {
         text = 'INFINITE · NO LIMIT';
     } else {
-        text = (m.tag ? m.tag + ' · ' : '') + 'FIRST TO ' + settings.target;
+        text = (m.tag ? m.tag + ' · ' : '') + 'FIRST TO ' + settings.target + (G.winBy > 1 ? ` · WIN BY ${G.winBy}` : '');
     }
     if (text !== lastInfo) { matchInfoEl.textContent = text; lastInfo = text; }
     matchInfoEl.classList.toggle('low', low);
 }
 
-function resetPositions() {
+function resetPositions(first) {
     for (const p of players) p.reset();
     balls.forEach(b => b.reset());
     AI.reset();
-    G.resetRound?.();
+    G.resetRound?.(first);
 }
 
 function beginKickoff(short) {
-    resetPositions();
+    resetPositions(!short);
     state = 'COUNTDOWN';
     countdownShort = short;
     countdown = short ? 70 : 180;
     lastBeep = -1;
-    if (short) showBanner('READY', '', '#ffffff', 70, true);
+    if (short) { const call = G.kickoffCall?.(true); showBanner(call?.title || 'READY', call?.sub || '', '#ffffff', 70, true); }
     updateCamera(true);
 }
 
@@ -965,11 +966,12 @@ function goalScored(side, ball) {
     scores[side]++;
     setScoreUI(side);
     const kind = mode().kind;
-    matchOver = kind === 'endless' ? false : (kind === 'time' ? overtime : scores[side] >= targetGoals());
+    matchOver = kind === 'endless' ? false : (kind === 'time' ? overtime : scores[side] >= targetGoals() && scores[side] - scores[3 - side] >= (G.winBy || 1));
     streak = side === lastScorer ? streak + 1 : 1;
     lastScorer = side;
     state = 'GOAL';
     goalTimer = 120;
+    if (G.celebrate) { G.celebrate(side, ball); return; }
     flash = 0.45;
     shake = 10;
     Sound.goal();
@@ -1013,7 +1015,10 @@ function physicsStep() {
     for (const b of balls) b.update();
 
     for (const b of balls) {
-        for (const p of players) { const h = resolveCollision(p, b); if (h > 0) onKick(p, b, h); }
+        for (const p of players) {
+            const h = resolveCollision(p, b);
+            if (h > 0) { onKick(p, b, h); G.onContact?.(p, b); }
+        }
     }
     for (let i = 0; i < players.length; i++) {
         for (let j = i + 1; j < players.length; j++) {
@@ -1024,6 +1029,7 @@ function physicsStep() {
     for (let i = 0; i < balls.length; i++) {
         for (let j = i + 1; j < balls.length; j++) resolveCollision(balls[i], balls[j]);
     }
+    G.afterCollisions?.();
 
     for (const p of players) {
         ACT.step?.(p);
@@ -1068,7 +1074,7 @@ function tickSim() {
                 if (sec > 0 && sec !== lastBeep) {
                     lastBeep = sec;
                     Sound.beep(false);
-                    showBanner(String(sec), '', '#ffffff', 60);
+                    showBanner(String(sec), G.kickoffCall?.(false)?.sub || '', '#ffffff', 60);
                 }
             }
             if (countdown <= 0) {

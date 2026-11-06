@@ -474,6 +474,7 @@ function refreshMenu() {
     const h3 = p3Human(), h4 = p4Human();
     $('p1-title').textContent = two ? (h3 ? 'Players 1 + 3' : 'Player 1 + Bot') : 'Player 1';
     $('p2-title').textContent = cpu ? (two ? `CPU Team · ${lvl}` : `CPU · ${lvl}`) : (two ? (h4 ? 'Players 2 + 4' : 'Player 2 + Bot') : 'Player 2');
+    const TIP = ACT.tip ? ` ${ACT.tip}` : '';
     const row = (who, j, l, r, d) => `${who ? who + ': ' : ''}<b>${j}</b> jump · <b>${l}</b> <b>${r}</b> lean · <b>${d}</b> ${ACT.name}`;
     if (h3 && cpu) {
         $('p1-keys').innerHTML = row('P1', 'W', 'A', 'D', 'S') + '<br>' + row('P3', '↑', '←', '→', '↓');
@@ -482,14 +483,14 @@ function refreshMenu() {
     } else {
         $('p1-keys').innerHTML = cpu
             ? `Hold &amp; release <b>W</b> or <b>↑</b> to jump<br><b>A</b> <b>D</b> or <b>←</b> <b>→</b> lean · <b>S</b> or <b>↓</b> ${ACT.name}`
-            : `Hold &amp; release <b>W</b> to jump<br><b>A</b> <b>D</b> lean · <b>S</b> ${ACT.name}`;
+            : `Hold &amp; release <b>W</b> to jump<br><b>A</b> <b>D</b> lean · <b>S</b> ${ACT.name}${TIP}`;
     }
     if (cpu) {
         $('p2-keys').innerHTML = 'Computer controlled<br>Pick a look for your rival';
     } else if (h4) {
         $('p2-keys').innerHTML = row('P2', '↑', '←', '→', '↓') + '<br>' + row('P4', 'I', 'J', 'L', 'K');
     } else {
-        $('p2-keys').innerHTML = `Hold &amp; release <b>↑</b> to jump<br><b>←</b> <b>→</b> lean · <b>↓</b> ${ACT.name}`;
+        $('p2-keys').innerHTML = `Hold &amp; release <b>↑</b> to jump<br><b>←</b> <b>→</b> lean · <b>↓</b> ${ACT.name}${TIP}`;
     }
     muteBtn.textContent = settings.muted ? '🔇' : '🔊';
     saveSettings();

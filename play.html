@@ -280,6 +280,17 @@
         .ol-seat.t1 { border-color: var(--neon-blue); }
         .ol-seat.t2 { border-color: var(--neon-red); }
         .ol-seat.empty { color: #6c7a86; font-weight: 600; }
+        /* seat picking (games with pickSeats): Blue and Red columns of buttons */
+        .ol-team-head { font-size: 0.68rem; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
+        .ol-team-head.t1 { color: var(--neon-blue); }
+        .ol-team-head.t2 { color: var(--neon-red); }
+        .ol-pick .ol-seat { width: 100%; text-align: left; cursor: default; transition: background 0.15s; }
+        .ol-pick .ol-seat.empty { color: #8a98a5; background: rgba(255, 255, 255, 0.03); }
+        .ol-pick .ol-seat.can { cursor: pointer; }
+        .ol-pick .ol-seat.can:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+        .ol-pick .ol-seat.mine { box-shadow: inset 0 0 0 2px var(--gold); }
+        .ol-bench { grid-column: 1 / -1; color: #a4b0be; font-size: 0.76rem; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ol-bench b { color: #fff; }
         #ol-host-settings { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
         .ol-status { color: #a4b0be; font-size: 0.8rem; text-align: center; min-height: 1.2em; }
         .ol-status.err { color: #ff6b6b; }
