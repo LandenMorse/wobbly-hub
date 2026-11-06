@@ -17,6 +17,7 @@ create publication supabase_realtime;
 
 \ir ../migrations/20261104000000_realtime_rooms.sql
 \ir ../migrations/20261107000000_accounts_queue_elo.sql
+\ir ../migrations/20261108000000_queue_vs_bots.sql
 
 -- Run the next statements as this user (signed in, role authenticated); pg_temp.me(null) goes back to the superuser.
 create function pg_temp.me(u uuid) returns void language plpgsql as $$
@@ -178,6 +179,24 @@ begin
   assert (select array_agg(user_id) from public.queue where user_id in (u[12], u[13])) = array[u[13]], 'old queue rows deleted';
   assert (select status from public.matches where room_code = 'TTTT') = 'done' and (select status from public.matches where room_code = 'SSSS') = 'live', 'old live match closed';
   assert (select count(*) from public.ratings where user_id in (u[12], u[13])) = 0, 'no rating change on expiry';
+
+  -- ---- 2v2 vs bots: two players, both on team 1, never mixed with the 1v1 queue, unrated
+  perform pg_temp.me(null);
+  delete from public.queue; delete from public.matches;
+  perform pg_temp.me(u[1]);
+  assert pg_temp.fails($q$select public.join_queue('soccer', 4, true)$q$, 'P0001'), 'vs bots is 2 players only';
+  assert public.join_queue('soccer', 2, true) is null, 'first bots player waits';
+  perform pg_temp.me(u[7]); assert public.join_queue('soccer', 2) is null, 'a 1v1 waiter does not join a vs bots match';
+  perform pg_temp.me(u[2]); m := public.join_queue('soccer', 2, true);
+  assert m.id is not null and m.bots and m.size = 2 and m.host_id = u[1], 'second bots player completes it';
+  assert m.players = jsonb_build_array(jsonb_build_object('id', u[1], 'team', 1), jsonb_build_object('id', u[2], 'team', 1)), 'both on team 1';
+  perform pg_temp.me(u[1]);
+  perform public.report_result(m.id, 2::smallint);
+  perform pg_temp.me(null);
+  assert (select status || winner from public.matches where id = m.id) = 'done2', 'bots match closed';
+  assert (select (elo, wins, losses) from public.ratings where user_id = u[1] and game = 'soccer') = row(1016, 1, 0), 'bots match leaves ratings alone';
+  assert (select (elo, wins, losses) from public.ratings where user_id = u[2] and game = 'soccer') = row(984, 0, 1), 'no loss counted';
+  assert not exists (select 1 from public.rooms where code = m.room_code), 'bots room closed';
 
   raise notice 'all accounts / queue / elo checks passed';
 end $$;

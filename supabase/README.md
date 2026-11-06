@@ -10,6 +10,7 @@ Rooms use **Supabase Auth (anonymous sign-ins)** and **private Realtime channels
    - `20261106000000_hub_realtime.sql`: RLS for the hub's `hub:` topics.
    - `20261104000100_rooms_cleanup_cron.sql`: optional; expires rooms older than 6 hours (needs `pg_cron`).
    - `20261107000000_accounts_queue_elo.sql`: accounts, matchmaking and Elo (below).
+   - `20261108000000_queue_vs_bots.sql`: the 2v2 vs bots queue (`join_queue(game, 2, true)`: both players on team 1, bots fill the other seats in the game; `report_result` closes it without rating changes).
 3. **Realtime settings → Allow public access: off**, so only private, authorised channels work.
 
 ## Channel layout

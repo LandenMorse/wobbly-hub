@@ -158,12 +158,12 @@ async function netOpen(code, asHost, match) {
         inputs: {}, snaps: [], mySeat: asHost && !G.pickSeats ? 1 : 0, fx: [], gch: null, gchs: {}, helloInfo: {}, pred: null
     });
     if (asHost) { settings.opponent = 'human'; settings.mates = 'human'; }
-    if (asHost && match) {   // ranked: the game's ranked mode and default length, 1v1 or 2v2 as queued, seats from the match
-        Object.assign(settings, { mode: G.ranked, target: DEFAULTS.target, time: DEFAULTS.time, field: DEFAULTS.field, teams: match.size === 4 ? 2 : 1 });
+    if (asHost && match) {   // ranked: the game's ranked mode and default length, 1v1 or 2v2 as queued (vs bots: 2v2, bots take the empty seats), seats from the match
+        Object.assign(settings, { mode: G.ranked, target: DEFAULTS.target, time: DEFAULTS.time, field: DEFAULTS.field, teams: match.size === 4 || match.bots ? 2 : 1 });
         net.matchTimer = setTimeout(() => {
             if (!net.active || net.match !== match || net.inMatch) return;
             const mine = Object.keys(net.seats).find(s => net.seats[s] === net.id);
-            if (mine && !Object.keys(net.seats).some(s => s % 2 !== mine % 2)) { netReport(mine % 2 ? 1 : 2); netLeave('The other team did not show up. The match counts as your win.'); }   // walkover
+            if (mine && !match.bots && !Object.keys(net.seats).some(s => s % 2 !== mine % 2)) { netReport(mine % 2 ? 1 : 2); netLeave('The other team did not show up. The match counts as your win.'); }   // walkover
             else netLeave('Not everyone showed up. The match was cancelled.', true);
         }, 30000);
     }
@@ -344,7 +344,7 @@ function netHostSync() {
         const now = Date.now(), g = net.gone, myTeam = net.match.players.find(p => p.id === net.id).team;
         for (const p of net.match.players) { if (p.id === net.id || ps[p.id]) delete g[p.id]; else if (!g[p.id]) g[p.id] = now; }
         const other = net.match.players.filter(p => p.team !== myTeam);
-        if (other.every(p => g[p.id])) {
+        if (other.length && other.every(p => g[p.id])) {   // vs bots: no other team to leave
             const wait = Math.max(...other.map(p => g[p.id] + 15000 - now));
             if (wait <= 0) { netReport(myTeam); netLeave('The other team left. The match counts as your win.'); return; }
             clearTimeout(net.goneTimer); net.goneTimer = setTimeout(netHostSync, wait + 50);
