@@ -23,6 +23,8 @@ Rooms use **Supabase Auth (anonymous sign-ins)** and **private Realtime channels
 
 `<world>` must match `^[a-z0-9-]{1,16}$` (`20261106000000_hub_realtime.sql`).
 
+Matches go peer to peer when they can: each guest sends a WebRTC offer (`rtc`) on its `g:<uid>` line and the host answers (`rtc`, with `to: <uid>`) on `ws:<CODE>:host`. Snapshots and inputs then travel over the data channel and do not touch Realtime; the topics above carry the lobby, the signalling, and the match for any guest whose data channel did not open (see `shared/net.js`). This matters on the Free plan, which allows 100 Realtime messages per second for the whole project, counting every recipient of a broadcast.
+
 The host listens on one `g:<uid>` topic per guest, so the sender of every input is the topic's `<uid>` (the JWT subject), not a field in the payload. Guests trust `lobby`/`start`/`snap` because only the host can publish them.
 
 ## Accounts, matchmaking and Elo (`20261107000000_accounts_queue_elo.sql`)

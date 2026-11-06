@@ -64,6 +64,8 @@ async function ranked(n, pad) {
         ok(Object.keys(seen[0].seats).length === n, 'not everyone has a seat');
         ok(seen.filter(s => s.host).length === 1 && seen.find(s => s.host).id === m.host_id, 'the host is not the match host');
         const host = fr[seen.findIndex(s => s.host)];
+        for (let i = 0; i < 40 && !(await Promise.all(fr.map(f => f.evaluate(() => netLink())))).every(l => l === 'host' || l === 'direct'); i++) await sleep(250);
+        ok((await Promise.all(fr.map(f => f.evaluate(() => netLink())))).every(l => l === 'host' || l === 'direct'), 'not every guest has a data channel to the host');
         await host.evaluate(() => { scores = { 1: 5, 2: 1 }; endMatch(); endMatch(); });
         await sleep(800);
         const r = await results(pages[0]);
@@ -94,6 +96,42 @@ async function flicker() {
     } finally { await ctx.close(); }
 }
 
+// A ranked 1v1: the guest's data channel opens, snapshots and inputs skip the room channel; when it closes, the room channel takes over
+async function direct() {
+    const errs = [], ctx = await context(errs), pages = [];
+    try {
+        for (let i = 0; i < 2; i++) pages.push(await hub(ctx, 'Tester' + i));
+        for (const p of pages) await queueAt(p, 350);
+        const fr = await untilGames(pages);
+        const roles = await Promise.all(fr.map(f => f.evaluate(() => net.isHost)));
+        const host = fr[roles.indexOf(true)], guest = fr[roles.indexOf(false)];
+        for (let i = 0; i < 40 && await guest.evaluate(() => netLink()) !== 'direct'; i++) await sleep(250);
+        ok(await guest.evaluate(() => netLink()) === 'direct', 'the data channel did not open');
+        // Count what the host puts on the room channel, and what the guest receives
+        await host.evaluate(() => { window.__relayed = 0; const ch = net.channel, send = ch.send.bind(ch); ch.send = (m) => { if (m.event === 'snap') window.__relayed++; return send(m); }; });
+        const t0 = await guest.evaluate(() => net.latestT);
+        await sleep(1000);
+        ok(await host.evaluate(() => window.__relayed) === 0, 'snapshots still went over the room channel');
+        ok(await guest.evaluate(() => net.latestT) > t0 + 30, 'the guest did not get snapshots over the data channel');
+        // An input over the data channel reaches the host's player for the guest's seat
+        await pages[roles.indexOf(false)].bringToFront();
+        await guest.evaluate(() => { keys.KeyD = true; netLocalChanged(); });
+        await sleep(300);
+        ok(await host.evaluate((s) => seatActor(s).input.right, await guest.evaluate(() => net.mySeat)), 'the input did not reach the host');
+        await guest.evaluate(() => { keys.KeyD = false; netLocalChanged(); });
+        await sleep(300);
+        ok(!await host.evaluate((s) => seatActor(s).input.right, await guest.evaluate(() => net.mySeat)), 'the input release did not reach the host');
+        // The data channel closes for good: the room channel carries the match again
+        await guest.evaluate(() => { net.rtcTries = 99; net.rtc.dc.close(); });
+        for (let i = 0; i < 20 && await host.evaluate(() => Object.keys(net.rtcs).length); i++) await sleep(250);
+        ok(await guest.evaluate(() => netLink()) === 'relay', 'the guest did not fall back to the room channel');
+        const t1 = await guest.evaluate(() => net.latestT);
+        await sleep(1000);
+        ok(await host.evaluate(() => window.__relayed) > 0 && await guest.evaluate(() => net.latestT) > t1 + 30, 'snapshots did not come over the room channel after the fallback');
+        ok(!errs.length, 'page errors: ' + errs.join('; '));
+    } finally { await ctx.close(); }
+}
+
 async function load() {
     const errs = [], ctx = await context(errs), p = await ctx.newPage();
     try {
@@ -106,7 +144,7 @@ async function load() {
     await new Promise(r => server.listen(0, '127.0.0.1', r));
     BASE = `http://127.0.0.1:${server.address().port}/`;
     browser = await chromium.launch();
-    const cases = [['hub and game pages load', load], ['1v1 soccer: queue, room, one result', () => ranked(2, 350)], ['2v2 volleyball: one match, seats from match.players, one result', () => ranked(4, 2050)], ['presence flicker: no report; real leave: one report', flicker]];
+    const cases = [['hub and game pages load', load], ['1v1 soccer: queue, room, one result', () => ranked(2, 350)], ['2v2 volleyball: one match, seats from match.players, one result', () => ranked(4, 2050)], ['presence flicker: no report; real leave: one report', flicker], ['peer to peer: snapshots and inputs on the data channel, fallback to the room channel', direct]];
     let failed = 0;
     for (const [name, fn] of cases) {
         try { await fn(); console.log('PASS', name); } catch (e) { failed++; console.log('FAIL', name, '-', e.message); }

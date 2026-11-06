@@ -14,10 +14,10 @@ A monorepo of small browser games (plain HTML and JS, no framework, no build ste
 python3 -m http.server
 ```
 
-Open http://localhost:8000/ (or http://localhost:8000/play.html?game=soccer). Add `?nettest` to a page URL for the network test mode. Opening a game file straight from disk also works. In `?nettest` there is no Supabase: the account is local to the tab and the ranked queue is a BroadcastChannel stand-in (no Elo), so ranked matches work between tabs of one browser.
+Open http://localhost:8000/ (or http://localhost:8000/play.html?game=soccer). Add `?nettest` to a page URL for the network test mode. Opening a game file straight from disk also works. In `?nettest` there is no Supabase: the account is local to the tab and the ranked queue is a BroadcastChannel stand-in (no Elo), so ranked matches work between tabs of one browser. Online matches send snapshots and inputs peer to peer (WebRTC) and fall back to Supabase Realtime; add `?nortc` to a game URL to force the fallback.
 
 Ranked play: in the hub, hold on the 1v1 or 2v2 pad of a game to queue; the match's room is made by the database, its host reports the result at the end (needs the `accounts_queue_elo` migration).
 
-Tests: `node tools/e2e.js` (pages load, the ranked queue and match flow in `?nettest`, walkovers; needs Playwright), and the SQL tests in `supabase/tests/` (see [supabase/README.md](supabase/README.md)).
+Tests: `node tools/e2e.js` (pages load, the ranked queue and match flow in `?nettest`, walkovers, the peer-to-peer link and its fallback; needs Playwright), and the SQL tests in `supabase/tests/` (see [supabase/README.md](supabase/README.md)).
 
 Cosmetics: [docs/COSMETICS.md](docs/COSMETICS.md). Check them with `node tools/cosmetics.js check`.
