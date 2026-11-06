@@ -6,7 +6,7 @@ Leads: copy everything below the line into the helper's task, fill every `<...>`
 
 You are drawing cosmetic items for a 2D cartoon soccer game. **Your only job is to write the items described below into one file.** Do not read other files, explore the project, run commands, or change anything else. Do not explain your work; just write the file.
 
-**File to write (replace its whole contents):** `<cosmetics/packs/hat-b-western.js>`
+**File to write (replace its whole contents):** `<shared/cosmetics/packs/hat-b-western.js>`
 **Pack:** `<hat-b-western>`  **Category:** `<hat>`  **Theme:** `<western>`
 **Every id must start with:** `<western_>` and be lowercase letters, digits and underscores, at most 32 characters.
 

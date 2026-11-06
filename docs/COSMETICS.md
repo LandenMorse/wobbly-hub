@@ -5,22 +5,21 @@ This is the guide for anyone (person or agent) adding skins, hats, boots, access
 ## The short version
 
 ```bash
-node tools/cosmetics.js new hat cowboys        # creates cosmetics/packs/hat-cowboys.js and lists it in the game
+node tools/cosmetics.js new hat cowboys        # creates shared/cosmetics/packs/hat-cowboys.js and lists it in shared/cosmetics/load.js
 # edit that file: add items to the array
 node tools/cosmetics.js check --pack hat-cowboys   # must print OK with 0 errors
 node tools/cosmetics.js sheet hat --pack hat-cowboys   # renders dist/sheet-hat-hat-cowboys.png to look at
 ```
 
-Then open `wobbly-soccer.html` in a browser and click the name in any picker (for example the hat name) to see every item in a searchable grid.
+Then serve the repo (`python3 -m http.server`) and open `games/soccer.html` in a browser and click the name in any picker (for example the hat name) to see every item in a searchable grid.
 
-**Only ever touch your own pack file.** Do not edit `cosmetics/registry.js`, other people's packs, or `wobbly-soccer.html` by hand. The one part of `wobbly-soccer.html` that changes when you add a pack is the block between `<!-- COSMETIC PACKS ... -->` and `<!-- /COSMETIC PACKS -->`, and `node tools/cosmetics.js sync` (run automatically by `new` and `check`) writes it, inlining the registry and every pack so the game stays one self-contained file. Commit `wobbly-soccer.html` along with your pack. If two branches both add packs and that block conflicts in a merge, take either side and run `node tools/cosmetics.js sync` again.
+**Only ever touch your own pack file.** Do not edit `shared/cosmetics/registry.js` or other people's packs. `new` adds your pack to the list in `shared/cosmetics/load.js` (commit that with your pack); if two branches both add packs and that list conflicts in a merge, keep every line from both sides.
 
 ## How it fits together
 
-- `cosmetics/registry.js` is the engine: it validates items, stores them by id, draws them through one renderer per category, and caches static items as sprites.
-- `cosmetics/packs/<category>-<name>.js` are pack files. Each one calls `Cosmetics.define(...)` once with a list of items of a single category. `*-base.js` hold the original items.
-- `wobbly-soccer.html` loads the registry, then every pack, then the game.
-- `node tools/cosmetics.js build` copies the synced, self-contained `wobbly-soccer.html` to `dist/` (the root file is already shareable on its own).
+- `shared/cosmetics/registry.js` is the engine: it validates items, stores them by id, draws them through one renderer per category, and caches static items as sprites.
+- `shared/cosmetics/packs/<category>-<name>.js` are pack files. Each one calls `Cosmetics.define(...)` once with a list of items of a single category. `*-base.js` hold the original items.
+- `shared/cosmetics/load.js` is the only list of pack files. Every game page (`index.html`, `games/*.html`) includes it with one `<script>` tag, and it loads the registry, then every pack, before the game script.
 
 ## A pack file
 
