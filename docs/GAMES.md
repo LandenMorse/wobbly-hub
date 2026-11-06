@@ -13,7 +13,7 @@ Steps: add `{ id, name, file, accent, ground }` to `games/index.js` (the hub's a
 | field | meaning |
 | --- | --- |
 | `id` | must be listed in `games/index.js` (`name`, `file`, `ranked`, `accent`, `ground` come from there) |
-| `ranked` (in `games/index.js`) | the mode id ranked matches are played in (`'classic'`). The hub gives every listed game 1v1 and 2v2 ranked pads; ranked rooms are humans only, seats come from the match, and the host reports the winning team at full time |
+| `ranked` (in `games/index.js`) | the mode id ranked matches are played in (`'classic'`). The hub gives every listed game 1v1 and 2v2 ranked pads; ranked rooms are humans only, seats come from the match, and the host reports the winning team at full time (or a walkover when the other team never shows up or is gone for 15 s). Known limit: if the host never shows up or vanishes, nobody can report; the database closes such a match after its 15 minute cap |
 | `point` | word for a score: `'goal'` (HUD, banners, chips, mode text) |
 | `subtitle`, `startLabel`, `overLabel`, `hint` | menu texts: subtitle under the title, start button, end-of-match heading, last part of the key hint line |
 | `storageKey` | localStorage key for the game's settings. Never change a shipped key: saves live there. (Name and look are not here: they belong to the account, `shared/account.js`) |

@@ -9,7 +9,8 @@ window.Account = (() => {
     const JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
     const SRI = 'sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o';   // pinned: a tampered CDN file will not run
     const LOCAL = /[?&]nettest\b/.test(location.search);
-    const USERNAME = /^[A-Za-z0-9_]{3,16}$/;   // same rule as profiles.username
+    const NAME_MIN = 3, NAME_MAX = 16;   // the database is the authority (profiles.username)
+    const USERNAME = new RegExp(`^[A-Za-z0-9_]{${NAME_MIN},${NAME_MAX}}$`);
     const COS = ['skin', 'hat', 'boots', 'acc'];
 
     // ---------- The look and name without an account (and as a cache of the profile): one key shared by the hub and the games ----------
@@ -22,9 +23,9 @@ window.Account = (() => {
         const online = read('wobblySoccer.online.v1') || read('wobblyVolleyball.online.v1') || {};
         return { name: hub.name || online.name || '', skin: hub.skin ?? game.p1Skin, hat: hub.hat ?? game.p1Hat, boots: hub.boots ?? game.p1Boots, acc: hub.acc ?? game.p1Acc };
     })();
-    const clean = (s) => String(s || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 12);
+    const clean = (s) => String(s || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, NAME_MAX);
     const A = {
-        LOCAL, USERNAME, client: null, id: '', email: '', profile: null, ratings: {}, error: '',
+        LOCAL, USERNAME, NAME_MAX, clean, client: null, id: '', email: '', profile: null, ratings: {}, error: '',
         name: () => store.name = clean(store.name),
         look() { const o = {}; for (const c of COS) o[c] = Cosmetics.resolve(c, store[c]); return o; }
     };
@@ -42,12 +43,12 @@ window.Account = (() => {
     // Save the username. Returns { error } with a message for the player, or {}.
     A.saveName = async (name) => {
         name = clean(name);
-        if (!USERNAME.test(name)) return { error: 'Use 3 to 12 letters, digits or _' };
+        if (!USERNAME.test(name)) return { error: `Use ${NAME_MIN} to ${NAME_MAX} letters, digits or _` };
         if (A.client && A.id && !(A.profile && A.profile.username === name)) {
             const row = { username: name, cosmetics: A.look() };
             const { error } = A.profile ? await A.client.from('profiles').update(row).eq('id', A.id) : await A.client.from('profiles').insert({ id: A.id, ...row });
             if (error) return { error: error.code === '23505' ? 'Name taken, pick another' : 'Could not save your name' };
-            A.profile = { username: name };
+            A.profile = { ...A.profile, username: name };
         }
         store.name = name;
         persist();

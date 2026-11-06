@@ -153,14 +153,19 @@ async function netOpen(code, asHost, match) {
     } catch (err) { setOlBusy(false); olStatus(err.message || 'Could not connect.', true); return; }
     net.saved = { ...settings };
     Object.assign(net, {
-        active: true, isHost: asHost, inMatch: false, code, channel: ch, match: match || null, reported: false,
+        active: true, isHost: asHost, inMatch: false, code, channel: ch, match: match || null, reported: false, gone: {},
         hostId: asHost ? net.id : hostId, roster: {}, seats: asHost && !G.pickSeats ? { 1: net.id } : {}, wantSeq: 0,
         inputs: {}, snaps: [], mySeat: asHost && !G.pickSeats ? 1 : 0, fx: [], gch: null, gchs: {}, helloInfo: {}, pred: null
     });
     if (asHost) { settings.opponent = 'human'; settings.mates = 'human'; }
     if (asHost && match) {   // ranked: the game's ranked mode and default length, 1v1 or 2v2 as queued, seats from the match
         Object.assign(settings, { mode: G.ranked, target: DEFAULTS.target, time: DEFAULTS.time, field: DEFAULTS.field, teams: match.size === 4 ? 2 : 1 });
-        net.matchTimer = setTimeout(() => { if (net.active && net.match === match && !net.inMatch) netLeave('Not everyone showed up. The match was cancelled.', true); }, 30000);
+        net.matchTimer = setTimeout(() => {
+            if (!net.active || net.match !== match || net.inMatch) return;
+            const mine = Object.keys(net.seats).find(s => net.seats[s] === net.id);
+            if (mine && !Object.keys(net.seats).some(s => s % 2 !== mine % 2)) { netReport(mine % 2 ? 1 : 2); netLeave('The other team did not show up. The match counts as your win.'); }   // walkover
+            else netLeave('Not everyone showed up. The match was cancelled.', true);
+        }, 30000);
     }
     netUpdateRec();
     showOlView();
@@ -196,8 +201,8 @@ async function netOpen(code, asHost, match) {
                 olStatus('Looking for the host…');
                 netOpenGuestLine(code);
                 net.joinTimer = setTimeout(() => {
-                    if (net.active && !net.isHost) netLeave(`The host of room ${code} is not answering. Check the code and try again.`, true);
-                }, 8000);
+                    if (net.active && !net.isHost) netLeave(net.match ? 'The host of the match did not show up. The match was cancelled.' : `The host of room ${code} is not answering. Check the code and try again.`, true);
+                }, net.match ? 30000 : 8000);
             }
         } else if (!joined && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
             netLeave('Could not connect to the room. Check the project URL and key, and that the database migrations are applied.', true);
@@ -250,7 +255,7 @@ function netOnHello(uid, m) {
     // Seat requests ride on hello (guests have no other message to the host in the lobby).
     // wq counts the guest's requests, so a resent or stale hello never repeats an old one.
     const wq = Math.max(0, +m.wq || 0), lastWq = prev ? prev.wq : 0;
-    net.helloInfo[uid] = { name: String(m.name || 'Player').slice(0, 12), skin: Cosmetics.resolve('skin', m.skin), hat: Cosmetics.resolve('hat', m.hat), boots: Cosmetics.resolve('boots', m.boots), acc: Cosmetics.resolve('acc', m.acc), t: prev ? prev.t : Date.now(), wq: Math.max(wq, lastWq) };
+    net.helloInfo[uid] = { name: Account.clean(m.name) || 'Player', skin: Cosmetics.resolve('skin', m.skin), hat: Cosmetics.resolve('hat', m.hat), boots: Cosmetics.resolve('boots', m.boots), acc: Cosmetics.resolve('acc', m.acc), t: prev ? prev.t : Date.now(), wq: Math.max(wq, lastWq) };
     if (G.pickSeats && wq > lastWq) netSetSeat(uid, m.want);
     netHostSync();
 }
@@ -259,13 +264,13 @@ function netLeave(msg, err) {
     const ch = net.channel, gch = net.gch;
     netRoomClose();
     net.channel = null; net.gch = null;
-    clearTimeout(net.joinTimer); clearInterval(net.helloTimer); clearTimeout(net.matchTimer);
+    clearTimeout(net.joinTimer); clearInterval(net.helloTimer); clearTimeout(net.matchTimer); clearTimeout(net.goneTimer);
     for (const uid of Object.keys(net.gchs)) netDropGuest(uid);
     for (const c of [ch, gch]) {
         if (c) try { if (net.client && !LOCAL_TEST) net.client.removeChannel(c); else c.unsubscribe(); } catch (e) { /* ignore */ }
     }
     const wasPlaying = state !== 'MENU';
-    Object.assign(net, { active: false, isHost: false, inMatch: false, match: null, code: '', hostId: '', roster: {}, seats: {}, inputs: {}, snaps: [], mySeat: 0, fx: [], gchs: {}, helloInfo: {}, pred: null });
+    Object.assign(net, { active: false, isHost: false, inMatch: false, match: null, gone: {}, code: '', hostId: '', roster: {}, seats: {}, inputs: {}, snaps: [], mySeat: 0, fx: [], gchs: {}, helloInfo: {}, pred: null });
     netUpdateRec();
     if (net.saved) { Object.assign(settings, net.saved); net.saved = null; }
     for (const p of [p1, p2, p3, p4]) p.cos = null;
@@ -335,9 +340,15 @@ function netHostSync() {
         const used = [0, 0, 0];
         for (const p of net.match.players) if (roster[p.id]) net.seats[p.team + 2 * used[p.team]++] = p.id;
     }
-    if (net.match && net.inMatch && !net.reported) {   // everyone on the other team left: the remaining team wins
-        const mine = Object.keys(net.seats).find(s => net.seats[s] === net.id);
-        if (mine && !Object.keys(net.seats).some(s => s % 2 !== mine % 2)) { netReport(mine % 2 ? 1 : 2); netLeave('The other team left. The match counts as your win.'); return; }
+    if (net.match && net.inMatch && !net.reported) {   // the whole other team has been gone for 15 s (a brief reconnect does not count): the remaining team wins
+        const now = Date.now(), g = net.gone, myTeam = net.match.players.find(p => p.id === net.id).team;
+        for (const p of net.match.players) { if (p.id === net.id || ps[p.id]) delete g[p.id]; else if (!g[p.id]) g[p.id] = now; }
+        const other = net.match.players.filter(p => p.team !== myTeam);
+        if (other.every(p => g[p.id])) {
+            const wait = Math.max(...other.map(p => g[p.id] + 15000 - now));
+            if (wait <= 0) { netReport(myTeam); netLeave('The other team left. The match counts as your win.'); return; }
+            clearTimeout(net.goneTimer); net.goneTimer = setTimeout(netHostSync, wait + 50);
+        }
     }
     net.mySeat = 0;
     for (const s in net.seats) if (net.seats[s] === net.id) net.mySeat = +s;

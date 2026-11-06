@@ -215,7 +215,7 @@
                 <canvas class="preview" id="preview" width="320" height="320"></canvas>
                 <div class="entry-right">
                     <span class="mini-label">Your name</span>
-                    <input id="name-input" maxlength="12" placeholder="Player" spellcheck="false" autocomplete="off">
+                    <input id="name-input" placeholder="Player" spellcheck="false" autocomplete="off">
                     <div class="picker" data-key="team"><span class="pick-kind">Colour</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
                     <div class="picker" data-key="skin"><span class="pick-kind">Skin</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
                     <div class="picker" data-key="hat"><span class="pick-kind">Hat</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
@@ -307,7 +307,8 @@
         // =====================================================================
         // The hub keeps its colour and mute here; the name and the look belong to the account (shared/account.js).
         const STORAGE_KEY = 'wobblyHub.settings.v1';
-        const cleanName = (s) => String(s || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 12);
+        const cleanName = Account.clean;
+        $('name-input').maxLength = Account.NAME_MAX;
         const look = { name: '', team: 1, muted: false, skin: undefined, hat: undefined, boots: undefined, acc: undefined };
         try { Object.assign(look, JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')); } catch (e) { /* storage unavailable */ }
         look.team = look.team === 2 ? 2 : 1;
