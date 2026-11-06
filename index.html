@@ -291,6 +291,7 @@
         const TEAM = { 1: '#00d2ff', 2: '#ff3838' };
         const POS_EVERY = 6;              // send our position every 6 frames (10 per second) while moving
         const META_EVERY = 120;           // and our name, look and game room every 2 seconds
+        const META_EVERY_PLAYING = 600;   // only every 10 seconds while a game is open (we stand still; room changes are sent as they happen)
         const MAX_PEERS = 40;
 
         // The game areas: each game in games/index.js gets its own patch of ground, sign and join zone. Only the layout lives here.
@@ -1271,7 +1272,8 @@
             updatePeers();
             camX += (Math.max(0, Math.min(WORLD_W - W, me.x - W / 2)) - camX) * 0.12;
             if (++net.posTick >= POS_EVERY) { net.posTick = 0; sendPos(false); }
-            if (++net.metaTick >= META_EVERY) { net.metaTick = 0; sendMeta(); sendPos(true); }
+            // Every message here is delivered to everyone in the hub and counts against the Realtime quota, so stay quiet while a game is open
+            if (++net.metaTick >= (playing ? META_EVERY_PLAYING : META_EVERY)) { net.metaTick = 0; sendMeta(); if (!playing) sendPos(true); }
         }
         const STEP = 1000 / 60;
         let last = performance.now(), acc = 0;
