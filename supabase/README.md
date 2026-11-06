@@ -34,11 +34,10 @@ The host listens on one `g:<uid>` topic per guest, so the sender of every input 
 | `queue` | nobody | nobody; only the functions |
 | `matches` (room code, host, players with teams, status) | its players (in the `supabase_realtime` publication, so waiting players learn their match) | nobody |
 
-Functions (security definer, signed-in users only): `join_queue(game, size)` returns the new match (or null while waiting; size 2 or 4; 2v2 teams are balanced by Elo; creates the `rooms` row, the oldest waiting player hosts), `leave_queue()`, `report_result(match, winner)` (host only, once; Elo K=32 on team averages, closes the room). Stale queue rows (10 min) and unreported matches (3 h, no rating change) are cleaned by the `wobbly-expire-queue` cron job (installed only where `pg_cron` exists).
+Functions (security definer, signed-in users only): `join_queue(game, size)` returns the new match (or null while waiting; size 2 or 4; 2v2 teams are balanced by Elo; creates the `rooms` row, the oldest waiting player hosts), `leave_queue()`, `report_result(match, winner)` (host only, once; Elo K=32 on team averages, closes the room). Stale queue rows (10 min) and unreported matches (a match counts as live for 15 minutes, `wobbly_match_ttl()`; closed without rating changes) are cleaned by the `wobbly-expire-queue` cron job (installed only where `pg_cron` exists).
 
 ## Tests
 
-`supabase/tests/accounts_queue_elo_test.sql` covers the above the same way (`psql -v ON_ERROR_STOP=1 -f ...` on a scratch database).
-
+`supabase/tests/accounts_queue_elo_test.sql` covers the above the same way (`psql -v ON_ERROR_STOP=1 -f ...` on a scratch database); then `supabase/tests/join_queue_race.sh` (two real sessions) checks that nobody is matched twice.
 
 `supabase/tests/realtime_rls_test.sql` checks the policies against a stubbed `realtime` schema on a scratch Postgres (it passed locally). It does not prove the hosted Realtime service honours them, so run a live two-browser test after applying the migrations.

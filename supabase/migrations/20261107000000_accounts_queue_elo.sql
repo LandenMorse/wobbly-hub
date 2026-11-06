@@ -103,6 +103,12 @@ language sql immutable set search_path = '' as $$
   select round(32 * ((case when won then 1 else 0 end) - 1 / (1 + power(10::numeric, (b - a) / 400))))::int
 $$;
 
+-- How long a match counts as live. After that it no longer blocks its players from queueing
+-- (a host who closed the tab never reports) and wobbly_expire_stale() closes it.
+create function public.wobbly_match_ttl() returns interval
+language sql immutable set search_path = '' as $$ select interval '15 minutes' $$;
+revoke execute on function public.wobbly_match_ttl() from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- join_queue: wait for a match. Returns the match once p_size players are waiting, else null
 -- (then watch matches via Realtime postgres_changes, or call again).
@@ -120,13 +126,15 @@ begin
   if uid is null then raise exception 'sign in first'; end if;
   if p_game is null or p_game !~ '^[a-z0-9-]{1,16}$' then raise exception 'bad game'; end if;
   if p_size is null or p_size not in (2, 4) then raise exception 'size must be 2 or 4'; end if;
+
+  -- One matchmaker at a time, taken before any check: a player can switch game or size, and must never
+  -- pass the live-match check while another join is still forming their match.
+  perform pg_advisory_xact_lock(hashtext('wobbly-matchmaking'));
   if exists (select 1 from public.matches
-             where status = 'live' and players @> jsonb_build_array(jsonb_build_object('id', uid))) then
+             where status = 'live' and created_at > now() - public.wobbly_match_ttl()
+               and players @> jsonb_build_array(jsonb_build_object('id', uid))) then
     raise exception 'you are already in a live match';
   end if;
-
-  -- One matchmaker at a time per queue, so two players joining together cannot both miss each other.
-  perform pg_advisory_xact_lock(hashtext(p_game || ':' || p_size));
   insert into public.queue (user_id, game, size) values (uid, p_game, p_size)
     on conflict (user_id) do update set game = excluded.game, size = excluded.size, joined_at = now();
 
@@ -217,12 +225,12 @@ revoke execute on function public.report_result(uuid, smallint) from public, ano
 grant execute on function public.join_queue(text, int), public.leave_queue(), public.report_result(uuid, smallint) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- Stale rows: waiting over 10 minutes, or a live match never reported after 3 hours (closed without rating changes).
+-- Stale rows: waiting over 10 minutes, or a live match never reported within wobbly_match_ttl() (closed without rating changes).
 -- ---------------------------------------------------------------------------
 create function public.wobbly_expire_stale() returns void
 language sql set search_path = '' as $$
   delete from public.queue where joined_at < now() - interval '10 minutes';
-  update public.matches set status = 'done' where status = 'live' and created_at < now() - interval '3 hours';
+  update public.matches set status = 'done' where status = 'live' and created_at < now() - public.wobbly_match_ttl();
 $$;
 revoke execute on function public.wobbly_expire_stale() from public, anon, authenticated;
 

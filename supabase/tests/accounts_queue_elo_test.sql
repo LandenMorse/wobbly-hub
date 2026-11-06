@@ -159,14 +159,25 @@ begin
   perform pg_temp.me(null);
   assert m.host_id = u[10] and (select count(*) from public.rooms where host_id = u[10]) = 1 and m.room_code <> 'ZZZZ', 'existing room of the host replaced';
 
+  -- ---- a match counts as live for 15 minutes: an abandoned one stops blocking its players
+  perform pg_temp.me(null);
+  delete from public.queue;
+  insert into public.matches(game, size, room_code, host_id, players, created_at) values
+    ('soccer', 2, 'SSSS', u[14], jsonb_build_array(jsonb_build_object('id', u[12], 'team', 1), jsonb_build_object('id', u[14], 'team', 2)), now() - interval '10 minutes'),
+    ('soccer', 2, 'TTTT', u[14], jsonb_build_array(jsonb_build_object('id', u[13], 'team', 1), jsonb_build_object('id', u[14], 'team', 2)), now() - interval '20 minutes');
+  perform pg_temp.me(u[12]);
+  assert pg_temp.fails($q$select public.join_queue('soccer', 2)$q$, 'P0001'), 'a 10-minute-old live match still blocks queueing';
+  perform pg_temp.me(u[13]);
+  assert public.join_queue('soccer', 2) is null, 'a 20-minute-old live match no longer blocks queueing';
+
   -- ---- stale rows
+  perform pg_temp.me(null);
+  delete from public.queue;
   insert into public.queue(user_id, game, size, joined_at) values (u[12], 'soccer', 2, now() - interval '11 minutes'), (u[13], 'soccer', 2, now() - interval '9 minutes');
-  insert into public.matches(game, size, room_code, host_id, players, created_at)
-    values ('soccer', 2, 'QQQQ', u[12], '[]', now() - interval '4 hours'), ('soccer', 2, 'RRRR', u[12], '[]', now() - interval '2 hours');
   perform public.wobbly_expire_stale();
   assert (select array_agg(user_id) from public.queue where user_id in (u[12], u[13])) = array[u[13]], 'old queue rows deleted';
-  assert (select status from public.matches where room_code = 'QQQQ') = 'done' and (select status from public.matches where room_code = 'RRRR') = 'live', 'old live match closed';
-  assert (select count(*) from public.ratings where user_id = u[12]) = 0, 'no rating change on expiry';
+  assert (select status from public.matches where room_code = 'TTTT') = 'done' and (select status from public.matches where room_code = 'SSSS') = 'live', 'old live match closed';
+  assert (select count(*) from public.ratings where user_id in (u[12], u[13])) = 0, 'no rating change on expiry';
 
   raise notice 'all accounts / queue / elo checks passed';
 end $$;
