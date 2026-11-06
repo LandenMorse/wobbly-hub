@@ -7,6 +7,7 @@ Rooms use **Supabase Auth (anonymous sign-ins)** and **private Realtime channels
 1. **Authentication → Sign In / Providers → Allow anonymous sign-ins: on.** (Consider CAPTCHA to limit abuse.)
 2. Apply the migrations in `supabase/migrations/` in order (SQL editor, `supabase db push`, or the Supabase MCP `apply_migration`):
    - `20261104000000_realtime_rooms.sql`: `public.rooms` table and the RLS policies on `realtime.messages`.
+   - `20261106000000_hub_realtime.sql`: RLS for the hub's `hub:` topics.
    - `20261104000100_rooms_cleanup_cron.sql`: optional; expires rooms older than 6 hours (needs `pg_cron`).
 3. **Realtime settings → Allow public access: off**, so only private, authorised channels work.
 
@@ -16,6 +17,10 @@ Rooms use **Supabase Auth (anonymous sign-ins)** and **private Realtime channels
 | --- | --- | --- |
 | `ws:<CODE>:host` | anyone, if the room exists (broadcast + presence) | broadcast: the room host only (`rooms.host_id`); presence: anyone |
 | `ws:<CODE>:g:<uid>` | that guest and the host | that guest only |
+| `hub:<world>` | anyone signed in (broadcast + presence) | presence: anyone signed in; no broadcast |
+| `hub:<world>:u:<uid>` | anyone signed in (broadcast) | that user only |
+
+`<world>` must match `^[a-z0-9-]{1,16}$` (`20261106000000_hub_realtime.sql`).
 
 The host listens on one `g:<uid>` topic per guest, so the sender of every input is the topic's `<uid>` (the JWT subject), not a field in the payload. Guests trust `lobby`/`start`/`snap` because only the host can publish them.
 
