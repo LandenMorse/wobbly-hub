@@ -49,20 +49,21 @@ async function untilGames(pages) { for (let i = 0; i < 100; i++) { const fs_ = p
 const ok = (c, msg) => { if (!c) throw new Error(msg); };
 
 // A ranked match with `n` tabs: queue, check seats against match.players, finish it on the host, expect exactly one result
-async function ranked(n, pad) {
+async function ranked(n, pad, bots) {
     const errs = [], ctx = await context(errs), pages = [];
     try {
         for (let i = 0; i < n; i++) pages.push(await hub(ctx, 'Tester' + i));
         for (const p of pages) await queueAt(p, pad);
         const fr = await untilGames(pages);
         const ms = await matches(pages[0]);
-        ok(ms.length === 1, `expected one match, got ${ms.length}`);
+        ok(ms.length === 1 && !!ms[0].bots === !!bots, `expected one ${bots ? 'vs bots ' : ''}match, got ${JSON.stringify(ms)}`);
         const m = ms[0], codes = new Set(await Promise.all(fr.map(f => f.evaluate(() => net.code))));
         ok(codes.size === 1 && [...codes][0] === m.room_code, 'not all tabs are in the match room');
         const seen = await Promise.all(fr.map(f => f.evaluate(() => ({ id: net.id, seats: net.seats, host: net.isHost }))));
         for (const s of seen) for (const [seat, id] of Object.entries(s.seats)) ok(m.players.find(p => p.id === id).team === (seat % 2 ? 1 : 2), 'a seat is on the wrong team');
         ok(Object.keys(seen[0].seats).length === n, 'not everyone has a seat');
         ok(seen.filter(s => s.host).length === 1 && seen.find(s => s.host).id === m.host_id, 'the host is not the match host');
+        if (bots) ok(await fr[0].evaluate(() => players.length === 4 && players.filter(p => p.isBot).map(seatOf).sort().join() === '2,4'), 'bots should play seats 2 and 4');
         const host = fr[seen.findIndex(s => s.host)];
         await host.evaluate(() => { scores = { 1: 5, 2: 1 }; endMatch(); endMatch(); });
         await sleep(800);
@@ -79,7 +80,7 @@ async function flicker() {
     const errs = [], ctx = await context(errs), pages = [];
     try {
         for (let i = 0; i < 2; i++) pages.push(await hub(ctx, 'Tester' + i));
-        for (const p of pages) await queueAt(p, 350);
+        for (const p of pages) await queueAt(p, 290);
         const fr = await untilGames(pages), host = fr[0];
         const gid = await fr[1].evaluate(() => net.id);
         const leave = () => host.evaluate((id) => net.channel.recv({ k: 'leave', id }), gid);
@@ -90,6 +91,23 @@ async function flicker() {
         await leave(); await sleep(300); await jump();   // the check runs again 15 s after the drop; wait for it
         for (let i = 0; i < 40 && !Object.keys(await results(pages[0])).length; i++) await sleep(500);
         ok(Object.keys(await results(pages[0])).length === 1, 'a real leave was not reported once');
+        ok(!errs.length, 'page errors: ' + errs.join('; '));
+    } finally { await ctx.close(); }
+}
+
+// The CPU / LOCAL pad in the volleyball area: the game opens on its menu without a room; a CPU match starts from it
+async function offline() {
+    const errs = [], ctx = await context(errs);
+    try {
+        const p = await hub(ctx, 'Solo');
+        await queueAt(p, 2110);
+        let f;
+        for (let i = 0; i < 50 && !(f = gameFrame(p)); i++) await sleep(200);
+        ok(f && !/[?&](join|create)=/.test(f.url()), 'expected the game without a room: ' + (f && f.url()));
+        await f.waitForFunction(() => typeof state !== 'undefined' && state === 'MENU' && !net.active);
+        await f.evaluate(() => { settings.opponent = 'hard'; startMatch(); });
+        await sleep(500);
+        ok(await f.evaluate(() => !net.active && state !== 'MENU' && bots.some(b => b.p === players[1])), 'a CPU match did not start');
         ok(!errs.length, 'page errors: ' + errs.join('; '));
     } finally { await ctx.close(); }
 }
@@ -106,7 +124,7 @@ async function load() {
     await new Promise(r => server.listen(0, '127.0.0.1', r));
     BASE = `http://127.0.0.1:${server.address().port}/`;
     browser = await chromium.launch();
-    const cases = [['hub and game pages load', load], ['1v1 soccer: queue, room, one result', () => ranked(2, 350)], ['2v2 volleyball: one match, seats from match.players, one result', () => ranked(4, 2050)], ['presence flicker: no report; real leave: one report', flicker]];
+    const cases = [['hub and game pages load', load], ['1v1 soccer: queue, room, one result', () => ranked(2, 290)], ['2v2 volleyball: one match, seats from match.players, one result', () => ranked(4, 1795)], ['2v2 vs bots soccer: two players on Blue, bots on Red, one result', () => ranked(2, 605, true)], ['CPU / local pad: the game menu, no room, a CPU match runs', offline], ['presence flicker: no report; real leave: one report', flicker]];
     let failed = 0;
     for (const [name, fn] of cases) {
         try { await fn(); console.log('PASS', name); } catch (e) { failed++; console.log('FAIL', name, '-', e.message); }

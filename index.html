@@ -435,7 +435,7 @@
                 if (p.hold === 0) Sound.tone(440, 0.08, 'triangle', 0.05);
                 p.hold++;
                 if (p.hold % 14 === 0) emit(p.x + (Math.random() - 0.5) * 50, GROUND_Y - 2, 2, { color: [area.accent, '#ffffff'], speed: 1.4, angle: -Math.PI / 2, spread: 0.6, life: 26, size: 2.5, gravity: -0.03 });
-                if (p.hold >= HOLD_FRAMES) { p.hold = 0; input.hold = false; const pad = padAt(area, p.x); pad ? joinQueue(area, pad) : joinArea(area); }
+                if (p.hold >= HOLD_FRAMES) { p.hold = 0; input.hold = false; const pad = padAt(area, p.x); pad && !pad.offline ? joinQueue(area, pad) : joinArea(area, null, !!pad || !Account.id); }
             } else p.hold = 0;
         }
 
@@ -457,8 +457,8 @@
         }
 
         const areaAt = (x) => AREAS.find(a => x >= a.x0 && x <= a.x1) || null;
-        // Ranked pads in every area (hold on one to queue for a matchmade game): size = players, dx = distance from the area's middle
-        const PADS = [{ size: 2, label: '1v1', dx: -150 }, { size: 4, label: '2v2', dx: 150 }];
+        // Pads in every area (hold on one): matchmade queues (size = players; bots: two players vs two bots, unrated) and offline play. dx = distance from the area's middle
+        const PADS = [{ size: 2, label: '1v1 RANKED', dx: -210 }, { size: 4, label: '2v2 RANKED', dx: -105 }, { size: 2, bots: true, label: '2v2 VS BOTS', dx: 105 }, { offline: true, label: 'CPU / LOCAL', dx: 210 }];
         const padAt = (a, x) => PADS.find(q => Math.abs(x - (a.x0 + a.x1) / 2 - q.dx) < 50) || null;
 
         // =====================================================================
@@ -693,19 +693,20 @@
         // =====================================================================
         let playing = null;   // the area whose game is open
         let ranked = false;   // the open game is a ranked match: its room is not advertised to the hub
-        function joinArea(area, match) {
+        function joinArea(area, match, offline) {
             if (queue) cancelQueue();
             // Join a room someone in the hub is hosting in its lobby; otherwise start one for the next people. A ranked match has its room already.
-            const room = match ? null : roomsFor(area.id).find(r => !r.inMatch);
+            // Offline: neither, so the game opens on its own menu (vs CPU or two players on one keyboard).
+            const room = match || offline ? null : roomsFor(area.id).find(r => !r.inMatch);
             const q = new URLSearchParams({ game: area.id, hub: '1' });
             if (match) { q.set('join', match.room_code); q.set('match', match.id); }
-            else if (room) q.set('join', room.code); else q.set('create', '1');
+            else if (room) q.set('join', room.code); else if (!offline) q.set('create', '1');
             if (LOCAL_TEST) q.set('nettest', '1');
             Sound.portal();
             emit(me.x, me.y, 40, { color: [area.accent, '#ffffff', '#f1c40f'], speed: 6, life: 40, size: 4, gravity: 0.05, drag: 0.94 });
             playing = area;
             ranked = !!match;
-            myRoom = { g: area.id, active: false, host: !room && !match, code: room ? room.code : '', n: 0, seated: 0, max: 2, inMatch: false };
+            myRoom = { g: area.id, active: false, host: !room && !match && !offline, code: room ? room.code : '', n: 0, seated: 0, max: 2, inMatch: false };
             sendMeta();
             input.left = input.right = input.hold = false;
             me.charging = false; me.charge = 0; me.hold = 0;
@@ -718,12 +719,12 @@
         }
 
         // =====================================================================
-        //  RANKED QUEUE: hold on a 1v1 / 2v2 pad -> matchmaking -> everyone opens the match's room
+        //  QUEUE: hold on a 1v1 / 2v2 ranked or 2v2 vs bots pad -> matchmaking -> everyone opens the match's room
         // =====================================================================
         let queue = null;   // { area, pad, at } while we wait for a match
         function showQueue() {
             $('queue-pill').classList.toggle('on', !!queue);
-            if (queue) $('queue-text').textContent = `Searching ${queue.pad.label} ${queue.area.name} · ${Math.floor((Date.now() - queue.at) / 1000)}s`;
+            if (queue) $('queue-text').textContent = `Searching ${queue.pad.label.toLowerCase()} ${queue.area.name} · ${Math.floor((Date.now() - queue.at) / 1000)}s`;
         }
         setInterval(showQueue, 1000);
         function cancelQueue() {
@@ -744,11 +745,11 @@
         async function joinQueue(area, pad) {
             if (queue) return;
             await Account.ready;
-            if (!Account.id || !(Account.LOCAL || Account.hasProfile())) { toast('Ranked games need an account. Check your connection and name.', true); return; }
+            if (!Account.id || !(Account.LOCAL || Account.hasProfile())) { toast('Matchmaking needs an account. Check your connection and name, or play CPU / LOCAL.', true); return; }
             queue = { area, pad, at: Date.now() };
             showQueue();
             Account.watchMatches(onMatch);
-            try { onMatch(await Account.joinQueue(area.id, pad.size)); }   // the match can come back right here (we were the last to join) or through Realtime
+            try { onMatch(await Account.joinQueue(area.id, pad.size, !!pad.bots)); }   // the match can come back right here (we were the last to join) or through Realtime
             catch (e) { queue = null; Account.watchMatches(null); showQueue(); toast(e.message || 'Could not join the queue', true); }
         }
         $('queue-cancel').addEventListener('click', (e) => { cancelQueue(); e.currentTarget.blur(); });
@@ -1056,11 +1057,12 @@
             ctx.fillStyle = grd; ctx.fillRect(a.x0, GROUND_Y - 70, a.x1 - a.x0, 70);
             ctx.fillStyle = hexA(a.accent, inside ? 0.9 : 0.45);
             ctx.fillRect(a.x0, GROUND_Y - 2, 4, -26); ctx.fillRect(a.x1 - 4, GROUND_Y - 2, 4, -26);
-            for (const q of PADS) {   // ranked pads
+            for (const q of PADS) {
                 const x = mid + q.dx, on = inside && padAt(a, me.x) === q;
                 ctx.fillStyle = hexA(a.accent, on ? 0.9 : 0.5); ctx.fillRect(x - 50, GROUND_Y - 5, 100, 5);
                 ctx.font = '800 12px Segoe UI, Roboto, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillStyle = on ? '#ffffff' : 'rgba(255,255,255,0.65)'; ctx.fillText(`${q.label} RANKED`, x, GROUND_Y - 17);
+                ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.strokeText(q.label, x, GROUND_Y - 17);   // readable over props (the soccer goal)
+                ctx.fillStyle = on ? '#ffffff' : 'rgba(255,255,255,0.65)'; ctx.fillText(q.label, x, GROUND_Y - 17);
             }
             // Live info
             const rooms = roomsFor(a.id), n = playingIn(a.id);
@@ -1068,12 +1070,12 @@
             ctx.font = '700 13px Segoe UI, Roboto, sans-serif'; ctx.fillStyle = '#dfe6e9';
             const lobby = rooms.filter(r => !r.inMatch);
             const line1 = n ? `${n} playing · ${rooms.length} room${rooms.length === 1 ? '' : 's'}` : 'Nobody playing yet';
-            const line2 = lobby.length ? `Room ${lobby[0].code} is waiting (${lobby[0].n} in lobby)` : rooms.length ? 'Matches in progress · hold to start a new room' : 'Hold to start a room';
+            const line2 = !Account.id ? 'Offline · hold to play vs CPU or local' : lobby.length ? `Room ${lobby[0].code} is waiting (${lobby[0].n} in lobby)` : rooms.length ? 'Matches in progress · hold to start a new room' : 'Hold to start a room';
             ctx.fillText(line1, mid, 120 + 60);
             ctx.fillStyle = lobby.length ? '#f1c40f' : '#8a98a5'; ctx.font = '700 12px Segoe UI, Roboto, sans-serif';
             ctx.fillText(line2, mid, 120 + 79);
             if (inside && !playing) {
-                const pad = padAt(a, me.x), what = pad ? `ranked ${pad.label}` : 'to join';
+                const pad = padAt(a, me.x), what = pad ? pad.label.toLowerCase() : Account.id ? 'to join' : 'to play offline';
                 const label = isTouch ? `Hold PLAY ${pad ? 'for ' : ''}${what}` : `Hold S / ↓ ${pad ? 'for ' : ''}${what}`;
                 ctx.font = '900 18px Segoe UI, Roboto, sans-serif';
                 ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,0.6)';

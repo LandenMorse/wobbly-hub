@@ -112,8 +112,8 @@ window.Account = (() => {
     A.signInEmail = async (email) => (await A.client.auth.signInWithOtp({ email, options: { emailRedirectTo: back(), shouldCreateUser: false } })).error;
 
     // ---------- Matchmaking and results ----------
-    // Contract (supabase/migrations/*_accounts_queue_elo.sql): join_queue(game, size) -> match | null, leave_queue(),
-    // report_result(match, winner); matches carry { id, game, size, room_code, host_id, players: [{ id, team }] }.
+    // Contract (supabase/migrations/*_accounts_queue_elo.sql, *_queue_vs_bots.sql): join_queue(game, size, bots) -> match | null, leave_queue(),
+    // report_result(match, winner); matches carry { id, game, size, bots, room_code, host_id, players: [{ id, team }] }. bots: 2 players on team 1 vs bots, unrated.
     const rpc = async (fn, args) => {
         const { data, error } = await A.client.rpc(fn, args);
         if (error) throw new Error(error.message);
@@ -128,9 +128,9 @@ window.Account = (() => {
         const ch = A.client.channel('my-matches').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matches' }, (p) => cb(p.new)).subscribe();
         stop = () => A.client.removeChannel(ch);
     };
-    A.joinQueue = async (game, size) => {
-        if (LOCAL) return localJoin(game, size);
-        const m = await rpc('join_queue', { p_game: game, p_size: size });
+    A.joinQueue = async (game, size, bots = false) => {
+        if (LOCAL) return localJoin(game, size, bots);
+        const m = await rpc('join_queue', bots ? { p_game: game, p_size: size, p_bots: true } : { p_game: game, p_size: size });   // ranked calls work without the vs-bots migration
         return m && m.id ? m : null;
     };
     A.leaveQueue = async () => { if (LOCAL) localLeave(); else if (A.client) await rpc('leave_queue', {}); };
@@ -153,16 +153,16 @@ window.Account = (() => {
     // Every waiting tab keeps the list of waiters. The last of the first `size` waiters forms the match, like join_queue would
     // when the size-th player arrives, and announces it; the others hear it through onMatch. Two tabs forming at the very same moment may disagree.
     let onMatch = null, waiting = null, bc = null;
-    const entries = new Map();   // id -> { id, game, size, at }
+    const entries = new Map();   // id -> { id, game, size, bots, at }
     const local = () => bc || (bc = Object.assign(new BroadcastChannel('wobbly-test-queue'), { onmessage: (e) => hear(e.data) }));
     function formMatch() {
         if (!waiting) return null;
-        const q = [...entries.values()].filter(e => e.game === waiting.game && e.size === waiting.size).sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1)).slice(0, waiting.size);
+        const q = [...entries.values()].filter(e => e.game === waiting.game && e.size === waiting.size && e.bots === waiting.bots).sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : 1)).slice(0, waiting.size);
         if (q.length < waiting.size || q[q.length - 1].id !== A.id) return null;
         const code = Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]).join('');
         // 1v1: oldest vs newest. 2v2: with equal ratings the DB puts the 1st and 4th on one team.
-        const m = { id: 'm' + Math.random().toString(36).slice(2, 10), game: waiting.game, size: waiting.size, room_code: code, host_id: q[0].id, status: 'live',
-            players: q.map((e, i) => ({ id: e.id, team: waiting.size === 2 ? i + 1 : (i === 0 || i === 3 ? 1 : 2) })) };
+        const m = { id: 'm' + Math.random().toString(36).slice(2, 10), game: waiting.game, size: waiting.size, bots: waiting.bots, room_code: code, host_id: q[0].id, status: 'live',
+            players: q.map((e, i) => ({ id: e.id, team: waiting.bots ? 1 : waiting.size === 2 ? i + 1 : (i === 0 || i === 3 ? 1 : 2) })) };
         const all = read('wobbly.test.matches') || {}; all[m.id] = m; write('wobbly.test.matches', all);
         local().postMessage({ k: 'match', m });
         take(m);
@@ -175,9 +175,9 @@ window.Account = (() => {
         else if (d.k === 'leave') entries.delete(d.id);
         else if (d.k === 'match') { const mine = waiting && d.m.players.some(p => p.id === A.id); take(d.m); if (mine && onMatch) onMatch(d.m); }
     }
-    async function localJoin(game, size) {
-        const e = { id: A.id, game, size, at: Date.now() };
-        waiting = { game, size }; entries.set(A.id, e);
+    async function localJoin(game, size, bots) {
+        const e = { id: A.id, game, size, bots, at: Date.now() };
+        waiting = { game, size, bots }; entries.set(A.id, e);
         local().postMessage({ k: 'q', e, ask: true });   // ask: waiters answer with their own entry
         await new Promise(r => setTimeout(r, 250));
         return formMatch();

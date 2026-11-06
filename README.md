@@ -16,7 +16,7 @@ python3 -m http.server
 
 Open http://localhost:8000/ (or http://localhost:8000/play.html?game=soccer). Add `?nettest` to a page URL for the network test mode. Opening a game file straight from disk also works. In `?nettest` there is no Supabase: the account is local to the tab and the ranked queue is a BroadcastChannel stand-in (no Elo), so ranked matches work between tabs of one browser.
 
-Ranked play: in the hub, hold on the 1v1 or 2v2 pad of a game to queue; the match's room is made by the database, its host reports the result at the end (needs the `accounts_queue_elo` migration).
+Pads in every game area of the hub (hold on one): 1v1 and 2v2 ranked queue for a matchmade game; the match's room is made by the database, its host reports the result at the end (needs the `accounts_queue_elo` migration). 2v2 vs bots queues two players together against two bots, unrated (needs `queue_vs_bots`). CPU / local opens the game's own menu with no room: play a bot or two players on one keyboard, no account or connection needed. Holding anywhere else in an area joins or starts a casual room (offline: the game's menu too).
 
 Tests: `node tools/e2e.js` (pages load, the ranked queue and match flow in `?nettest`, walkovers; needs Playwright), and the SQL tests in `supabase/tests/` (see [supabase/README.md](supabase/README.md)).
 
