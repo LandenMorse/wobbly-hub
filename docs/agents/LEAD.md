@@ -6,10 +6,10 @@ You lead one slice of the 450 new cosmetics. You plan themes, hand small batches
 
 | Lead | Categories | New items | File names you own | Id prefix rule |
 |---|---|---|---|---|
-| A | skin | 120 | `cosmetics/packs/skin-a-<theme>.js` | ids start with your theme word, e.g. `galaxy_`, `fruit_` |
-| B | hat | 120 | `cosmetics/packs/hat-b-<theme>.js` | same |
-| C | boots 50, acc 70 | 120 | `cosmetics/packs/boots-c-<theme>.js`, `cosmetics/packs/acc-c-<theme>.js` | same |
-| D | ball 70, arena 20 | 90 | `cosmetics/packs/ball-d-<theme>.js`, `cosmetics/packs/arena-d-<theme>.js` | same |
+| A | skin | 120 | `shared/cosmetics/packs/skin-a-<theme>.js` | ids start with your theme word, e.g. `galaxy_`, `fruit_` |
+| B | hat | 120 | `shared/cosmetics/packs/hat-b-<theme>.js` | same |
+| C | boots 50, acc 70 | 120 | `shared/cosmetics/packs/boots-c-<theme>.js`, `shared/cosmetics/packs/acc-c-<theme>.js` | same |
+| D | ball 70, arena 20 | 90 | `shared/cosmetics/packs/ball-d-<theme>.js`, `shared/cosmetics/packs/arena-d-<theme>.js` | same |
 
 Each lead owns whole categories, so ids can never collide across leads. Within your slice, give every pack a different theme word and use it as the id prefix.
 
@@ -35,12 +35,12 @@ Node 18+ is required. `check` and `sheet` use Playwright with Chromium if availa
 ## The loop for each batch
 
 1. **Plan** a theme and 8 to 12 item ideas (names, one-line looks, rarity). Keep about 60% common, 25% rare, 12% epic, 3% legendary. Ideas must be distinct from each other and from the originals.
-2. **Create the file:** `node tools/cosmetics.js new <category> <lead-letter>-<theme>` (for example `new hat b-western`). This writes `cosmetics/packs/hat-b-western.js` with one example item.
+2. **Create the file:** `node tools/cosmetics.js new <category> <lead-letter>-<theme>` (for example `new hat b-western`). This writes `shared/cosmetics/packs/hat-b-western.js` with one example item.
 3. **Delegate** writing the items to a helper using `docs/agents/ITEM_WRITER.md`. Fill in its blanks completely (file path, pack name, category, theme, prefix, item list) and paste the matching category cheat sheet from that file. Ask for one file, 8 to 12 items. Do not give the helper this handbook or ask it to run tools, read other files, or think about the game; its only job is the items.
 4. **Check:** `node tools/cosmetics.js check --pack <category>-<lead>-<theme>`. It must print `OK` with 0 errors. Read every warning.
 5. **Look:** `node tools/cosmetics.js sheet <category> --pack <category>-<lead>-<theme> --out /tmp/sheet.png` and view the PNG. (Arenas have no sheet; judge them from their colours.)
 6. **Review** against the checklist below. If anything fails, send the helper the exact check output lines and/or a precise description of what to fix per item id ("`western_stetson`: brim floats above the head, move it down to y = -1.0r"), and repeat from step 4. Give up on an item after two failed rounds and either fix it yourself or drop it and replace the idea.
-7. **Commit** only your pack file: `git add cosmetics/packs/<file>.js && git commit -m "Add <category> pack <theme> (<n> items)"`.
+7. **Commit** only your pack file and the line `new` added to `shared/cosmetics/load.js`: `git add shared/cosmetics/packs/<file>.js shared/cosmetics/load.js && git commit -m "Add <category> pack <theme> (<n> items)"`.
 
 Repeat until your slice is complete, then run `node tools/cosmetics.js check` (everything, not just your pack) and `node tools/cosmetics.js list` to confirm your counts.
 
@@ -61,8 +61,8 @@ Reject an item if any of these is true:
 
 ## Things to avoid
 
-- Do not edit `cosmetics/registry.js`, `tools/cosmetics.js`, `docs/`, any `*-base.js`, or another lead's files.
-- **Do not commit `wobbly-soccer.html`.** The tools rewrite its script list every time they run; that change would conflict between leads. Before each commit run `git checkout -- wobbly-soccer.html` (or just `git add` your pack file only). The list is regenerated once when the slices are merged with `node tools/cosmetics.js sync`.
+- Do not edit `shared/cosmetics/registry.js`, `tools/cosmetics.js`, `docs/`, any `*-base.js`, or another lead's files.
+- Do not edit `shared/cosmetics/load.js` by hand; `new` adds your pack. If it conflicts in a merge, keep every pack line from both sides.
 - Do not rename an id once it has been committed.
 - Do not use `Math.random`, `Date.now`, images, fonts or the DOM in items.
 
@@ -70,4 +70,4 @@ Reject an item if any of these is true:
 
 Push your branch (`git push -u origin cosmetics-lead-<letter>`) and report: the branch name, the count per category from `node tools/cosmetics.js list`, the pack files you added, and the final line of `node tools/cosmetics.js check`.
 
-Merging (done once, by whoever merges the four branches): merge each lead branch into the framework branch, run `node tools/cosmetics.js sync && node tools/cosmetics.js check`, commit the regenerated `wobbly-soccer.html`, and push.
+Merging (done once, by whoever merges the four branches): merge each lead branch into the framework branch, run `node tools/cosmetics.js check`, and push.

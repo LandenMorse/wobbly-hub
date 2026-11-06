@@ -1,4 +1,4 @@
-# Publishes the game to GitHub Pages on every push to main.
+# Publishes the hub (the repository root) to GitHub Pages on every push to main.
 # One-time setup: repo Settings → Pages → Build and deployment → Source: "GitHub Actions".
 name: Deploy to GitHub Pages
 
@@ -27,18 +27,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Inline cosmetics and check the page is in sync
-        run: |
-          node tools/cosmetics.js check --static
-          git diff --exit-code -- wobbly-soccer.html || { echo "::error::wobbly-soccer.html is out of date. Run 'node tools/cosmetics.js sync' and commit."; exit 1; }
-      - name: Assemble site
-        run: |
-          mkdir -p _site
-          cp wobbly-soccer.html _site/index.html
-          cp wobbly-soccer.html _site/wobbly-soccer.html
+      - name: Check cosmetics
+        run: node tools/cosmetics.js check --static
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: .
       - id: deployment
         uses: actions/deploy-pages@v4
