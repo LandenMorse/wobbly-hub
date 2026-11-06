@@ -17,6 +17,7 @@ grant select, insert on realtime.messages to authenticated;
 grant usage, select on sequence realtime.messages_id_seq to authenticated;
 
 \ir ../migrations/20261104000000_realtime_rooms.sql
+\ir ../migrations/20261106000000_hub_realtime.sql
 
 create or replace function pg_temp.can(op text, who uuid, tpc text, ext text) returns boolean language plpgsql as $$
 declare ok boolean;
@@ -61,5 +62,17 @@ begin
   assert pg_temp.can('select', g1, 'ws:ABCD:g:'||g1, 'broadcast'),            'guest reads own line';
   assert not pg_temp.can('select', g1, 'ws:ABCD:g:'||g2, 'broadcast'),        'guest cannot read another guest line';
   assert not pg_temp.can('insert', g1, 'ws:ABCD:g:'||g1, 'presence'),         'no presence on guest lines';
+  -- hub topics: world presence/read open to the signed in, own broadcast line only
+  insert into realtime.messages(topic, extension) values
+    ('hub:main','presence'),('hub:main','broadcast'),('hub:main:u:'||g1,'broadcast'),('hub:Bad_World','presence'),('hub:main:u:'||g1,'presence');
+  assert pg_temp.can('insert', g1, 'hub:main', 'presence'),                   'hub: track presence';
+  assert pg_temp.can('select', g2, 'hub:main', 'presence'),                   'hub: read presence';
+  assert not pg_temp.can('insert', g1, 'hub:main', 'broadcast'),              'hub: no broadcast on world topic';
+  assert pg_temp.can('insert', g1, 'hub:main:u:'||g1, 'broadcast'),           'hub: broadcast on own line';
+  assert not pg_temp.can('insert', g1, 'hub:main:u:'||g2, 'broadcast'),       'hub: cannot broadcast as another user';
+  assert pg_temp.can('select', g2, 'hub:main:u:'||g1, 'broadcast'),           'hub: read another user line';
+  assert not pg_temp.can('insert', g1, 'hub:main:u:'||g1, 'presence'),        'hub: no presence on user lines';
+  assert not pg_temp.can('insert', g1, 'hub:Bad_World', 'presence'),          'hub: bad world name rejected';
+  assert not pg_temp.can('select', g1, 'hub:Bad_World', 'presence'),          'hub: bad world not readable';
   raise notice 'all realtime policy checks passed';
 end $$;

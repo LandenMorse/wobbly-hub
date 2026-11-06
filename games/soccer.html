@@ -315,6 +315,7 @@
         .cos-item.r-legendary { box-shadow: inset 0 -3px 0 #f1c40f; }
         .cos-empty { color: #8a98a5; grid-column: 1 / -1; text-align: center; padding: 30px 0; }
     </style>
+    <script src="../shared/hub-link.js"></script>
 </head>
 <body>
     <div id="rotate-hint"><div class="big">📱↻</div>Rotate your phone to landscape to play.</div>
@@ -621,7 +622,7 @@
         const p3Human = () => humanMates();
         const p4Human = () => humanMates() && !isCPU();
         function saveSettings() {
-            if (net.active) return; // the host's room settings are temporary
+            if (net.active || HubLink.params) return; // the host's room settings are temporary
             try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
         }
         const isCPU = () => settings.opponent !== 'human';
@@ -2624,7 +2625,7 @@
         function r2(v) { return Math.round(v * 100) / 100; }
 
         const netStore = (() => { try { return JSON.parse(localStorage.getItem(NET_STORE) || '{}') || {}; } catch (e) { return {}; } })();
-        function saveNetStore() { try { localStorage.setItem(NET_STORE, JSON.stringify(netStore)); } catch (e) { /* ignore */ } }
+        function saveNetStore() { if (HubLink.params) return; try { localStorage.setItem(NET_STORE, JSON.stringify(netStore)); } catch (e) { /* ignore */ } }
         const netUrl = () => SUPABASE_URL || netStore.url || '';
         const netKey = () => SUPABASE_ANON_KEY || netStore.key || '';
         const needsConfig = () => !LOCAL_TEST && !(SUPABASE_URL && SUPABASE_ANON_KEY);
@@ -2910,6 +2911,7 @@
             setOlBusy(false);
             showOlView();
             olStatus(msg || '', err);
+            HubLink.left(msg);
         }
 
         function pickSettings() { const o = {}; for (const k of NET_SETTING_KEYS) o[k] = settings[k]; return o; }
@@ -3337,6 +3339,16 @@
         refreshMenu();
         setScoreUI(0);
         updateInfo();
+
+        // Opened from the hub: use its name and look (kept out of localStorage) and go straight into a room.
+        const hub = HubLink.params;
+        if (hub) {
+            netStore.name = hub.name;
+            settings.p1Skin = Cosmetics.resolve('skin', hub.skin); settings.p1Hat = Cosmetics.resolve('hat', hub.hat);
+            settings.p1Boots = Cosmetics.resolve('boots', hub.boots); settings.p1Acc = Cosmetics.resolve('acc', hub.acc);
+            HubLink.watch(() => ({ active: net.active, host: net.isHost, code: net.code, players: Object.keys(net.roster).length, seated: Object.keys(net.seats).length, max: settings.teams === 2 ? 4 : 2, inMatch: net.inMatch }));
+            if (hub.join || hub.create) { openOnline(); hub.join ? netOpen(hub.join, false) : netOpen(randomCode(), true); }
+        }
         requestAnimationFrame(frame);
     })();
     </script>
