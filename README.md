@@ -18,4 +18,6 @@ Open http://localhost:8000/ (or http://localhost:8000/play.html?game=soccer). Ad
 
 Ranked play: in the hub, hold on the 1v1 or 2v2 pad of a game to queue; the match's room is made by the database, its host reports the result at the end (needs the `accounts_queue_elo` migration).
 
+Tests: `node tools/e2e.js` (pages load, the ranked queue and match flow in `?nettest`, walkovers; needs Playwright), and the SQL tests in `supabase/tests/` (see [supabase/README.md](supabase/README.md)).
+
 Cosmetics: [docs/COSMETICS.md](docs/COSMETICS.md). Check them with `node tools/cosmetics.js check`.
