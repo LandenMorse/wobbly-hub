@@ -10,6 +10,7 @@
         'acc-base',
         'ball-base',
         'arena-base',
+        'emote-base',
         'acc-c-arcane',
         'acc-c-glam',
         'acc-c-jungle',

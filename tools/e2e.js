@@ -146,6 +146,13 @@ async function direct() {
         await host.evaluate(() => showBanner('E2E', '', '#ffffff', 30));
         await sleep(600);
         ok(await guest.evaluate(() => window.__banners) === 1, 'an effect did not play exactly once');
+        // Emotes: a guest's reaches the host over the data channel and the other way on the snapshots; a second one inside the cooldown is dropped
+        await guest.evaluate(() => { Emotes.send('salute'); Emotes.send('middle_finger'); });
+        await host.evaluate(() => Emotes.send('gg'));
+        await sleep(700);
+        const gs = await guest.evaluate(() => net.mySeat), hs = await host.evaluate(() => net.mySeat);
+        ok(await host.evaluate((k) => Emotes.shown(k), 's' + gs) === 'salute', 'the guest\'s emote did not reach the host (or the cooldown let a second one through)');
+        ok(await guest.evaluate((k) => Emotes.shown(k), 's' + hs) === 'gg', 'the host\'s emote did not reach the guest');
         // The host's side of the channel goes silent while it still looks open: the guest says so and the room channel takes over
         await host.evaluate(() => { for (const r of Object.values(net.rtcs)) r.dc.send = () => {}; window.__relayed = 0; });
         for (let i = 0; i < 20 && await host.evaluate(() => window.__relayed) === 0; i++) await sleep(250);

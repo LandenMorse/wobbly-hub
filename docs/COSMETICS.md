@@ -1,6 +1,6 @@
 # Adding cosmetics
 
-This is the guide for anyone (person or agent) adding skins, hats, boots, accessories, balls or arenas to Wobbly Soccer. Follow it exactly: the checks enforce most of it, and reviewers enforce the rest.
+This is the guide for anyone (person or agent) adding skins, hats, boots, accessories, balls, arenas or emotes to Wobbly Soccer. Follow it exactly: the checks enforce most of it, and reviewers enforce the rest.
 
 ## The short version
 
@@ -41,7 +41,7 @@ Cosmetics.define({ pack: 'hat-cowboys', category: 'hat', author: 'your-name' }, 
 
 Rules for the file:
 
-- File name is `<category>-<name>.js`, where category is one of `skin`, `hat`, `boots`, `acc`, `ball`, `arena`, and name is lowercase letters, digits and dashes.
+- File name is `<category>-<name>.js`, where category is one of `skin`, `hat`, `boots`, `acc`, `ball`, `arena`, `emote`, and name is lowercase letters, digits and dashes.
 - `pack` must equal the file name without `.js`. `category` must match the file name prefix.
 - The second argument is a function that receives `u` (the drawing helpers) and returns the array of items. Keep any shared constants (star positions, palettes) inside that function, never on `window`.
 
@@ -85,6 +85,7 @@ Everything is cached as a sprite cut from this box (plus 24 px of slack for glow
 | boots | `[-1.2, 1.2, 1.2, 2.7]` |
 | acc | `[-1.7, -1.5, 1.7, 2.0]` |
 | ball | `[-1.25, -1.25, 1.25, 1.25]` |
+| emote | `[-1.25, -1.25, 1.25, 1.25]` |
 
 ## Category fields
 
@@ -142,6 +143,10 @@ Accessories are drawn last, over the face. `draw(g, c)` is required. Use `u.eyes
 | `trail` | Motion trail colour as an `"r,g,b"` string, for example `'255,120,40'`. Defaults to white. |
 | `goal` | Confetti colours when this ball scores, for example `['#ffd700', '#ffffff']`. |
 | `fx` | Trail particles: a preset (`'fire'`, `'sparkle'`, `'smoke'`) or an emitter object `{ color, size, life, speed, gravity, drag, every, minSpeed }` where `every` is ticks between particles (default 3) and `minSpeed` the ball speed needed (default 4). Keep `every` at 2 or more unless it is a showpiece. |
+
+### emote
+
+A picture a player sends in a match or in the hub; it pops up in a bubble above their head for a few seconds. Players put 8 of them on the number keys (1-8, `Q` opens the picker); every emote in the registry is available, so adding one to a pack is all it takes. `draw(g, c)` is required: draw around the origin at radius `c.r` (it is shown at about 15 px), with `c.t` for `anim: true`. `c.look` and `c.team` do not apply. Keep it readable at that size: bold shapes, a dark `rgba(0,0,0,0.38)` outline, the yellow face / skin tones of `emote-base.js`. Only an id is sent over the network, so ids are as permanent as any other cosmetic id.
 
 ### arena
 

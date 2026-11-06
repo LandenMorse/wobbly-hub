@@ -24,8 +24,8 @@ const HTML = path.join(ROOT, 'play.html');   // the game page (needs ?game=socce
 const LOADER = path.join(DIR, 'load.js');
 const REGISTRY = path.join(DIR, 'registry.js');
 const PACKS = path.join(DIR, 'packs');
-const CATS = ['skin', 'hat', 'boots', 'acc', 'ball', 'arena'];
-const FILE_RE = /^(skin|hat|boots|acc|ball|arena)-([a-z0-9][a-z0-9-]*)\.js$/;
+const CATS = ['skin', 'hat', 'boots', 'acc', 'ball', 'arena', 'emote'];
+const FILE_RE = /^(skin|hat|boots|acc|ball|arena|emote)-([a-z0-9][a-z0-9-]*)\.js$/;
 
 const args = process.argv.slice(2);
 const cmd = args[0];
@@ -145,9 +145,9 @@ async function sheet() {
         items.forEach((it, i) => {
             const x = (i % cols) * cell, y = Math.floor(i / cols) * cell;
             g.fillStyle = i % 2 ? '#263238' : '#22303a'; g.fillRect(x, y, cell, cell);
-            g.save(); g.translate(x + cell / 2, y + (cat === 'ball' ? 62 : 64));
-            const c = { r: cat === 'ball' ? 34 : 24, t: 0, look: 1, team: '#00d2ff', teamNum: 1, hat: cat === 'hat' ? it : get('hat', 'none') };
-            if (cat === 'ball') Cosmetics.draw('ball', 'main', g, it, c);
+            g.save(); g.translate(x + cell / 2, y + (cat === 'ball' || cat === 'emote' ? 62 : 64));
+            const c = { r: cat === 'ball' ? 34 : cat === 'emote' ? 40 : 24, t: 0, look: 1, team: '#00d2ff', teamNum: 1, hat: cat === 'hat' ? it : get('hat', 'none') };
+            if (cat === 'ball' || cat === 'emote') Cosmetics.draw(cat, 'main', g, it, c);
             else {
                 const skin = cat === 'skin' ? it : get('skin', 'classic');
                 Cosmetics.draw('skin', 'body', g, skin, c);
@@ -194,6 +194,7 @@ function scaffold() {
         boots: `    { id: '${name.replace(/-/g, '_')}_example', name: 'Example', colors: ['#8e44ad', '#2d3436'] }`,
         acc: `    {\n        id: '${name.replace(/-/g, '_')}_example', name: 'Example',\n        draw(g, c) {\n            u.circle(g, 0, 0.9 * c.r, 0.15 * c.r, '#f1c40f');\n        }\n    }`,
         ball: `    { id: '${name.replace(/-/g, '_')}_example', name: 'Example', fill: '#ffffff', pattern: ['hoops', '#e74c3c', 0.5, 0.2], trail: '231,76,60' }`,
+        emote: `    {\n        id: '${name.replace(/-/g, '_')}_example', name: 'Example',\n        draw(g, c) {\n            const r = c.r;\n            u.circle(g, 0, 0, 0.9 * r, '#f1c40f', 'rgba(0,0,0,0.3)', 2);\n        }\n    }`,
         arena: `    { id: '${name.replace(/-/g, '_')}_example', name: 'Example', sky: ['#0b132b', '#1c2541'], ground: 'grass', grass: ['#2d6a4f', '#40916c'], line: 'rgba(255,255,255,0.3)', net: 'rgba(255,255,255,0.18)', post: '#ffffff' }`
     };
     fs.writeFileSync(file, `// ${cat} pack "${name}". Guide: docs/COSMETICS.md\nCosmetics.define({ pack: '${cat}-${name}', category: '${cat}', author: '' }, (u) => [\n${examples[cat]}\n]);\n`);

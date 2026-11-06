@@ -137,6 +137,7 @@
     <script src="shared/cosmetics/load.js"></script>
     <!-- /COSMETIC PACKS -->
     <script src="shared/common.js"></script>
+    <script src="shared/emotes.js"></script>
     <script src="shared/account.js"></script>
     <script src="games/index.js"></script>
 
@@ -420,7 +421,8 @@
                 if (id === net.id || net.subs.has(id) || !/^[\w-]{6,40}$/.test(id) || net.subs.size >= MAX_PEERS) continue;
                 const c = chan(`hub:${HUB_WORLD}:u:${id}`)
                     .on('broadcast', { event: 'pos' }, ({ payload }) => onPos(id, payload))
-                    .on('broadcast', { event: 'meta' }, ({ payload }) => onMeta(id, payload));
+                    .on('broadcast', { event: 'meta' }, ({ payload }) => onMeta(id, payload))
+                    .on('broadcast', { event: 'emote' }, ({ payload }) => { if (net.subs.has(id) && payload && typeof payload === 'object') Emotes.receive(id, payload.id); });
                 c.subscribe(() => {});
                 net.subs.set(id, c);
                 fresh = true;
@@ -430,6 +432,7 @@
                 dropChan(c);
                 net.subs.delete(id);
                 peers.delete(id);
+                Emotes.clear(id);
             }
             // Someone new: tell them about us soon (once they've had time to listen to our line)
             if (fresh) { setTimeout(() => { sendMeta(); sendPos(true); }, 500); setTimeout(() => { sendMeta(); sendPos(true); }, 1500); }
@@ -823,6 +826,7 @@
                 ctx.font = '700 11px Segoe UI, Roboto, sans-serif';
                 ctx.strokeText(sub, x, ty - 15); ctx.fillStyle = '#f1c40f'; ctx.fillText(sub, x, ty - 15);
             }
+            return ty - (sub ? 24 : 10);   // where an emote bubble's tail points
         }
 
         // Per-frame area overlay: glowing zone, live room info on the sign, and the prompt when you're inside
@@ -900,17 +904,18 @@
             }
             ctx.globalAlpha = 1;
             // Other players (behind you), then you
-            for (const q of peers.values()) {
+            for (const [id, q] of peers) {
                 if (!q.name || q.rx === null || q.rx < camX - 80 || q.rx > camX + W + 80) continue;
                 const inGame = q.st && q.st.g;
                 if (inGame) ctx.globalAlpha = 0.65;
                 const lift = blob(ctx, q.rx, q.ry, q.ra, q.charge, q.hold, q.face, q.team, q.cos, me, t);
                 ctx.globalAlpha = 1;
                 const area = inGame ? AREAS.find(a => a.id === q.st.g) : null;
-                nameTag(q.rx, q.ry, lift, q.name, '#ffffff', area ? `PLAYING ${area.title[1]}${q.st.code ? ' · ' + q.st.code : ''}` : '');
+                const top = nameTag(q.rx, q.ry, lift, q.name, '#ffffff', area ? `PLAYING ${area.title[1]}${q.st.code ? ' · ' + q.st.code : ''}` : '');
+                Emotes.draw(ctx, id, q.rx, top);
             }
             const lift = blob(ctx, me.x, me.y, me.angle, me.charge, me.hold / HOLD_FRAMES, me.face, look.team, [look.skin, look.hat, look.boots, look.acc], null, t);
-            nameTag(me.x, me.y, lift, (look.name || 'Player') + ' (you)', TEAM[look.team], '');
+            Emotes.draw(ctx, 'me', me.x, nameTag(me.x, me.y, lift, (look.name || 'Player') + ' (you)', TEAM[look.team], ''));
             // Particles
             for (const p of particles) {
                 ctx.globalAlpha = Math.max(0, p.life / p.max);
@@ -1021,6 +1026,11 @@
             e.currentTarget.blur();
         });
         function toggleMute() { look.muted = !look.muted; saveLook(); refreshEntry(); }
+        // Emotes (shared/emotes.js): on our own line, so the sender is the topic's owner. One small message per emote.
+        Emotes.hooks.self = () => 'me';
+        Emotes.hooks.send = (id) => send('emote', { id });
+        Emotes.hooks.enabled = () => entered && !playing && entryScreen.classList.contains('hidden');
+        Emotes.mount(container);
         $('mute-btn').addEventListener('click', (e) => { Sound.init(); toggleMute(); e.currentTarget.blur(); });
 
         // =====================================================================

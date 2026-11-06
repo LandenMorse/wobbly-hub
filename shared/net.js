@@ -195,6 +195,7 @@ async function rtcHostOffer(uid, m) {
 function rtcOnHostMsg(uid, data) {
     const m = rtcParse(data);
     if (m && m.e === 'in') netOnInput(uid, m.p);
+    else if (m && m.e === 'em') netOnEmote(uid, m.p);
     else if (m && m.e === 'k') {   // keepalive: answer it, and note whether the guest hears us (h: 0 = our side of the channel is dead)
         net.rtcs[uid].deaf = m.h === 0;
         rtcSend(net.rtcs[uid], '{"e":"k"}');
@@ -350,12 +351,13 @@ function netListenGuest(uid) {
     net.gchs[uid] = ch;
     ch.on('broadcast', { event: 'hello' }, ({ payload }) => netOnHello(uid, payload))
       .on('broadcast', { event: 'in' }, ({ payload }) => netOnInput(uid, payload))
+      .on('broadcast', { event: 'emote' }, ({ payload }) => netOnEmote(uid, payload))
       .on('broadcast', { event: 'rtc' }, ({ payload }) => rtcHostOffer(uid, payload));
     ch.subscribe(() => {});
 }
 function netDropGuest(uid) {
     const ch = net.gchs[uid];
-    delete net.gchs[uid]; delete net.helloInfo[uid];
+    delete net.gchs[uid]; delete net.helloInfo[uid]; delete net.emoteAt[uid];
     rtcClose(net.rtcs[uid]); delete net.rtcs[uid]; delete net.inSeqs[uid];
     if (ch) try { if (net.client && !LOCAL_TEST) net.client.removeChannel(ch); else ch.unsubscribe(); } catch (e) { /* ignore */ }
 }
@@ -661,6 +663,23 @@ function netOnInput(uid, m) {
     if (cur.d && !prev.d) ACT.down?.(p);
     else if (!cur.d && prev.d) ACT.up?.(p);
 }
+// Emotes ride on the effects the host already sends with every snapshot, so they cost no extra messages to the guests.
+// Guest -> host: one small message per emote (data channel if we have one, else our Supabase line). Host: 's' = seat, then the emote id.
+function netSendEmote(id) {
+    if (net.isHost) { if (net.rec && net.mySeat) net.fx.push(['m', net.mySeat, id]); return; }
+    if (!net.inMatch || !net.mySeat) return;
+    if (!(rtcAlive(net.rtc) && rtcSend(net.rtc, JSON.stringify({ e: 'em', p: { id } })))) netSend('emote', { id });
+}
+function netOnEmote(uid, m) {
+    if (!net.isHost || !net.rec || !m || typeof m.id !== 'string' || !Cosmetics.has('emote', m.id)) return;
+    const s = +Object.keys(net.seats).find(k => net.seats[k] === uid);
+    if (!s || !seatActor(s) || seatActor(s).isBot) return;
+    const t = performance.now();
+    if (t - (net.emoteAt[uid] || -1e9) < Emotes.COOLDOWN * 0.6) return;   // the sender waits COOLDOWN between emotes; allow a little network jitter
+    net.emoteAt[uid] = t;
+    net.fx.push(['m', s, m.id]);
+    Emotes.receive('s' + s, m.id);
+}
 function netBlur() {
     for (const k in keys) keys[k] = false;
     for (const n of [1, 2]) { touchState[n].left = false; touchState[n].right = false; }
@@ -715,6 +734,7 @@ function netPlayFx(f) {
     try {
         if (f[0] === 'e') emit(+f[1] || 0, +f[2] || 0, Math.min(80, f[3] | 0), (f[4] && typeof f[4] === 'object') ? f[4] : {});
         else if (f[0] === 's' && FX_SOUNDS.includes(f[1])) Sound[f[1]](...netSafeSoundArgs(f[1], f[2]));
+        else if (f[0] === 'm') { if ((f[1] | 0) !== net.mySeat) Emotes.receive('s' + (f[1] | 0), f[2]); }
         else if (f[0] === 'b') showBanner(String(f[1]), String(f[2] || ''), String(f[3] || '#ffffff'), +f[4] || 60, !!f[5]);
     } catch (e) { /* bad effect from the wire */ }
 }

@@ -221,6 +221,7 @@ function drawMarkers() {
             ctx.textAlign = 'center';
             ctx.fillText(actorLabel(p), p.x, y - 13);
         }
+        Emotes.draw(ctx, 's' + ([p1, p2, p3, p4].indexOf(p) + 1), p.x, y - (state === 'COUNTDOWN' || settings.teams === 2 || net.active ? 30 : 14));
     }
 }
 

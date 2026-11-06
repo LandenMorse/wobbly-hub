@@ -37,6 +37,12 @@ function frame(now) {
     requestAnimationFrame(frame);
 }
 
+// Emotes (shared/emotes.js): keys 1-8, or the button. Online they ride on the match's own traffic (see netSendEmote in net.js).
+Emotes.hooks.self = () => net.active ? (net.mySeat ? 's' + net.mySeat : null) : 's1';
+Emotes.hooks.send = (id) => { if (net.active) netSendEmote(id); };
+Emotes.hooks.enabled = () => !cosOpen() && (net.active ? net.inMatch : ACTIVE_STATES.includes(state));
+Emotes.mount(container);
+
 // The page is shared by all games: fill in this game's words
 document.title = `Wobbly ${G.name} - Charge Jump Edition`;
 $('g-name').textContent = G.name;
