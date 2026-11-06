@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wobbly Hub</title>
+    <style>
+        :root {
+            --bg-dark: #121214;
+            --neon-blue: #00d2ff;
+            --neon-red: #ff3838;
+            --gold: #f1c40f;
+            --card-bg: rgba(255, 255, 255, 0.07);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body { height: 100%; }
+
+        body {
+            background: radial-gradient(circle at 50% 30%, #1d1d24, var(--bg-dark) 70%);
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        button { font: inherit; border: none; cursor: pointer; outline: none; }
+
+        #game-container {
+            position: relative;
+            flex: none;
+            width: 1024px;
+            height: 576px;
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            background: #1e272e;
+            transform-origin: center center;
+            touch-action: none;
+            overflow: hidden;
+        }
+
+        #hubCanvas { display: block; width: 1024px; height: 576px; border-radius: 12px; }
+
+        /* ---------- Overlays ---------- */
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(12, 16, 20, 0.86);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            border-radius: 12px;
+            transition: opacity 0.25s ease;
+        }
+        .overlay.hidden { opacity: 0; pointer-events: none; }
+
+        .game-title {
+            font-size: 3rem;
+            font-weight: 900;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            line-height: 1;
+            text-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
+        }
+        .game-title span { color: var(--gold); }
+        .subtitle { color: #8a98a5; font-size: 0.95rem; margin: 0.45rem 0 1rem; }
+
+        .card { background: var(--card-bg); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; }
+        .entry-card { width: 560px; padding: 16px 18px; display: flex; gap: 18px; align-items: center; border-bottom: 4px solid var(--gold); margin-bottom: 1rem; }
+        .preview { width: 160px; height: 160px; flex: none; }
+        .entry-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+        .mini-label {
+            display: block; font-size: 0.68rem; color: #8a98a5;
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;
+        }
+        #name-input {
+            width: 100%; padding: 8px 12px; border-radius: 10px; outline: none; margin-bottom: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(0, 0, 0, 0.35);
+            color: #fff; font-size: 0.95rem; user-select: text; -webkit-user-select: text;
+        }
+        #name-input:focus { border-color: var(--gold); }
+
+        .hide { display: none !important; }
+        #acct { margin-top: 4px; font-size: 0.72rem; color: #a4b0be; line-height: 1.35; }
+        #acct .row { display: flex; gap: 6px; margin-top: 4px; }
+        #email-input { flex: 1; min-width: 0; padding: 5px 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 0.78rem; outline: none; user-select: text; -webkit-user-select: text; }
+        #acct button { padding: 5px 9px; border-radius: 8px; background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 0.72rem; font-weight: 700; }
+        #acct button:hover { background: rgba(255, 255, 255, 0.24); }
+        #acct-msg { color: var(--gold); min-height: 1em; }
+        .picker { display: flex; align-items: center; gap: 6px; width: 100%; }
+        .pick-kind { font-size: 0.68rem; color: #8a98a5; text-transform: uppercase; letter-spacing: 1px; width: 50px; }
+        .pick-label { flex: 1; text-align: center; color: #fff; font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .arrow {
+            width: 30px; height: 30px; border-radius: 8px; flex: none;
+            background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 0.75rem;
+            transition: background 0.15s;
+        }
+        .arrow:hover { background: rgba(255, 255, 255, 0.22); }
+
+        .big-btn {
+            padding: 0.8rem 3.2rem;
+            font-size: 1.3rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            background: var(--gold);
+            color: #000;
+            border-radius: 50px;
+            box-shadow: 0 10px 25px rgba(241, 196, 15, 0.35);
+            transition: transform 0.1s;
+        }
+        .big-btn:hover { transform: translateY(-2px); }
+        .hint { color: #5f6b76; font-size: 0.75rem; margin-top: 0.7rem; }
+        .keys b {
+            display: inline-block; background: #fff; color: #000; border-radius: 4px;
+            padding: 0 5px; font-size: 0.7rem; line-height: 1.4; box-shadow: 0 2px 0 #bdc3c7;
+        }
+
+        /* ---------- HUD ---------- */
+        .pill {
+            position: absolute; z-index: 5; pointer-events: none;
+            background: rgba(0, 0, 0, 0.55); color: #dfe6e9; border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 50px; font-weight: 700;
+        }
+        #online-pill { top: 18px; left: 18px; padding: 6px 14px; font-size: 0.82rem; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+        #online-dot { width: 9px; height: 9px; border-radius: 50%; background: #6c7a86; }
+        #online-dot.on { background: #2ecc71; box-shadow: 0 0 8px #2ecc71; }
+        #rating-pill { top: 54px; left: 18px; padding: 4px 12px; font-size: 0.74rem; color: #a4b0be; }
+        #queue-pill { top: 18px; left: 50%; transform: translateX(-50%); padding: 5px 6px 5px 14px; font-size: 0.82rem; display: none; align-items: center; gap: 10px; pointer-events: auto; }
+        #queue-pill.on { display: flex; }
+        #queue-pill button { padding: 4px 12px; border-radius: 50px; background: var(--neon-red); color: #fff; font-weight: 800; font-size: 0.74rem; }
+        #controls-pill { bottom: 14px; left: 50%; transform: translateX(-50%); padding: 5px 14px; font-size: 0.74rem; color: #a4b0be; white-space: nowrap; }
+        #controls-pill b {
+            display: inline-block; background: #fff; color: #000; border-radius: 4px;
+            padding: 0 5px; font-size: 0.68rem; line-height: 1.4; box-shadow: 0 2px 0 #bdc3c7;
+        }
+        .icon-btn {
+            position: absolute; top: 18px; z-index: 6;
+            width: 40px; height: 40px; border-radius: 12px;
+            background: rgba(0, 0, 0, 0.5); color: #fff; font-size: 0.95rem;
+        }
+        #look-btn { right: 66px; }
+        #mute-btn { right: 18px; }
+        #toast {
+            position: absolute; top: 70px; left: 50%; transform: translateX(-50%) translateY(-8px);
+            z-index: 8; padding: 8px 18px; border-radius: 50px; pointer-events: none;
+            background: rgba(0, 0, 0, 0.75); color: #fff; font-weight: 700; font-size: 0.9rem;
+            opacity: 0; transition: opacity 0.2s, transform 0.2s; white-space: nowrap; max-width: 90%; overflow: hidden; text-overflow: ellipsis;
+        }
+        #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+        #toast.err { color: #ff6b6b; }
+
+        /* ---------- A game, opened from the hub ---------- */
+        #play-wrap { position: fixed; inset: 0; z-index: 50; background: var(--bg-dark); display: none; }
+        #play-wrap.on { display: block; }
+        #play-frame { width: 100%; height: 100%; border: 0; display: block; }
+        #back-btn {
+            position: fixed; top: 10px; left: 10px; z-index: 51;
+            padding: 7px 14px; border-radius: 50px; font-weight: 800; font-size: 0.8rem; letter-spacing: 1px;
+            background: rgba(0, 0, 0, 0.6); color: #fff; border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        #back-btn:hover { background: rgba(0, 0, 0, 0.8); }
+
+        /* ---------- Touch controls ---------- */
+        #touch-controls { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
+        #touch-controls.off { display: none; }
+        .tc-cluster { position: absolute; bottom: 12px; display: flex; gap: 12px; align-items: flex-end; }
+        .tc-cluster.left { left: 24px; }
+        .tc-cluster.right { right: 24px; }
+        .tc-btn {
+            pointer-events: auto; touch-action: none;
+            width: 76px; height: 76px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.14); border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff; font-size: 1.5rem; font-weight: 800;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .tc-btn.wide { width: 92px; height: 92px; font-size: 0.95rem; letter-spacing: 1px; }
+        .tc-btn.play { border-color: var(--gold); }
+        .tc-btn.on { background: rgba(255, 255, 255, 0.38); }
+
+        #rotate-hint {
+            display: none; position: fixed; inset: 0; z-index: 100;
+            background: var(--bg-dark); color: #fff;
+            flex-direction: column; align-items: center; justify-content: center;
+            gap: 12px; font-size: 1.1rem; text-align: center; padding: 2rem;
+        }
+        #rotate-hint .big { font-size: 3rem; }
+        @media (orientation: portrait) and (pointer: coarse) {
+            #rotate-hint { display: flex; }
+        }
+    </style>
+</head>
+<body>
+    <div id="rotate-hint"><div class="big">📱↻</div>Rotate your phone to landscape to play.</div>
+
+    <div id="game-container">
+        <!-- Entry: name and look -->
+        <div id="entry-screen" class="overlay">
+            <h1 class="game-title">Wobbly <span>Hub</span></h1>
+            <p class="subtitle">Walk around, find your friends, and hold to jump into a game</p>
+            <div class="card entry-card">
+                <canvas class="preview" id="preview" width="320" height="320"></canvas>
+                <div class="entry-right">
+                    <span class="mini-label">Your name</span>
+                    <input id="name-input" placeholder="Player" spellcheck="false" autocomplete="off">
+                    <div class="picker" data-key="team"><span class="pick-kind">Colour</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-key="skin"><span class="pick-kind">Skin</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-key="hat"><span class="pick-kind">Hat</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-key="boots"><span class="pick-kind">Boots</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-key="acc"><span class="pick-kind">Acc</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div id="acct">
+                        <div id="acct-line"></div>
+                        <div class="row"><input id="email-input" type="email" placeholder="email" spellcheck="false" autocomplete="email"><button id="save-acct">Save account</button><button id="signin-acct">Sign in</button></div>
+                        <div id="acct-msg"></div>
+                    </div>
+                </div>
+            </div>
+            <button id="enter-btn" class="big-btn">Enter Hub</button>
+            <p class="hint keys"><b>A</b> <b>D</b> walk · hold <b>W</b> to jump · hold <b>S</b> in an area to play · your look carries into the games</p>
+        </div>
+
+        <!-- HUD -->
+        <div id="online-pill" class="pill"><span id="online-dot"></span><span id="online-text">Offline</span></div>
+        <div id="rating-pill" class="pill"></div>
+        <div id="queue-pill" class="pill"><span id="queue-text"></span><button id="queue-cancel">Cancel</button></div>
+        <div id="controls-pill" class="pill"><b>A</b> <b>D</b> walk · hold <b>W</b> jump · hold <b>S</b> in an area to play</div>
+        <button id="look-btn" class="icon-btn" title="Change your look">👕</button>
+        <button id="mute-btn" class="icon-btn" title="Mute (M)">🔊</button>
+        <div id="toast"></div>
+
+        <div id="touch-controls" class="off">
+            <div class="tc-cluster left" id="tc-left"></div>
+            <div class="tc-cluster right" id="tc-right"></div>
+        </div>
+
+        <canvas id="hubCanvas" width="1024" height="576"></canvas>
+    </div>
+
+    <div id="play-wrap">
+        <iframe id="play-frame" title="Wobbly game" allow="autoplay; fullscreen"></iframe>
+        <button id="back-btn" title="Leave the game and go back to the hub">✕ HUB</button>
+    </div>
+
+    <!-- COSMETIC PACKS: list of files lives in shared/cosmetics/load.js -->
+    <script src="shared/cosmetics/load.js"></script>
+    <!-- /COSMETIC PACKS -->
+    <script src="shared/account.js"></script>
+    <script src="games/index.js"></script>
+
+
+    <script>
+    (() => {
+        'use strict';
+
+        // =====================================================================
+        //  DOM
+        // =====================================================================
+        const $ = (id) => document.getElementById(id);
+        const canvas = $('hubCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = $('game-container');
+        const entryScreen = $('entry-screen');
+        const playWrap = $('play-wrap');
+        const playFrame = $('play-frame');
+        const W = 1024, H = 576;
+
+        if (typeof Cosmetics === 'undefined') throw new Error('cosmetics did not load');
+
+        // =====================================================================
+        //  CONFIG
+        //  Same core physics as the games, with Wobbly Volleyball's easier movement
+        // =====================================================================
+        const GRAVITY = 0.45, AIR_RES = 0.99, GROUND_Y = 480, WORLD_W = 2400, R = 32;
+        const WALK_ACCEL = 1.5, WALK_MAX = 5, AIR_ACCEL = 0.35, AIR_MAX = 6;
+        const AIR_GRAVITY = 0.6, APEX_BAND = 3, APEX_HANG = 0.5, JUMP_SCALE = Math.sqrt(AIR_GRAVITY);
+        const MAX_CHARGE = 60;
+        const HOLD_FRAMES = 70;           // hold S / ↓ this long in an area to join (~1.2 s)
+        const TEAM = { 1: '#00d2ff', 2: '#ff3838' };
+        const POS_EVERY = 6;              // send our position every 6 frames (10 per second) while moving
+        const META_EVERY = 120;           // and our name, look and game room every 2 seconds
+        const MAX_PEERS = 40;
+
+        // The game areas: each game in games/index.js gets its own patch of ground, sign and join zone. Only the layout lives here.
+        const AREA_LAYOUT = { soccer: { x0: 220, x1: 780 }, volleyball: { x0: 1620, x1: 2180 } };
+        const AREAS = Games.list.map(g => ({ ...g, title: ['WOBBLY', g.name.toUpperCase()], ...AREA_LAYOUT[g.id] }));
+        const SPAWN_X = 1200;
+
+        // Online: the Supabase project and the sign-in live in shared/account.js (hub tables: supabase/migrations/*_hub_realtime.sql)
+        const LOCAL_TEST = /[?&]nettest\b/.test(location.search);
+        const HUB_WORLD = (() => { try { const w = new URLSearchParams(location.search).get('world'); return w && /^[a-z0-9-]{1,16}$/.test(w) ? w : 'main'; } catch (e) { return 'main'; } })();
+
+        // =====================================================================
+        //  SETTINGS (persisted): name and look
+        // =====================================================================
+        // The hub keeps its colour and mute here; the name and the look belong to the account (shared/account.js).
+        const STORAGE_KEY = 'wobblyHub.settings.v1';
+        const cleanName = Account.clean;
+        $('name-input').maxLength = Account.NAME_MAX;
+        const look = { name: '', team: 1, muted: false, skin: undefined, hat: undefined, boots: undefined, acc: undefined };
+        try { Object.assign(look, JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')); } catch (e) { /* storage unavailable */ }
+        look.team = look.team === 2 ? 2 : 1;
+        look.muted = !!look.muted;
+        const pullLook = () => { look.name = Account.name(); Object.assign(look, Account.look()); };
+        pullLook();
+        function saveLook() {
+            Account.setLook(look);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ team: look.team, muted: look.muted })); } catch (e) { /* ignore */ }
+        }
+
+        // =====================================================================
+        //  SOUND (WebAudio synth, no assets)
+        // =====================================================================
+        const Sound = {
+            ac: null, master: null, nbuf: null,
+            init() {
+                try {
+                    if (!this.ac) {
+                        const AC = window.AudioContext || window.webkitAudioContext;
+                        if (!AC) return;
+                        this.ac = new AC();
+                        this.master = this.ac.createGain();
+                        this.master.gain.value = 0.6;
+                        this.master.connect(this.ac.destination);
+                    }
+                    if (this.ac.state === 'suspended') this.ac.resume();
+                } catch (e) { this.ac = null; }
+            },
+            ok() { return this.ac && !look.muted; },
+            tone(f, dur, type = 'sine', vol = 0.15, f2 = null, delay = 0) {
+                if (!this.ok()) return;
+                const t = this.ac.currentTime + delay;
+                const o = this.ac.createOscillator();
+                const g = this.ac.createGain();
+                o.type = type;
+                o.frequency.setValueAtTime(f, t);
+                if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                o.connect(g); g.connect(this.master);
+                o.start(t); o.stop(t + dur + 0.03);
+            },
+            noise(dur, vol = 0.2, freq = 1000, q = 1, delay = 0) {
+                if (!this.ok()) return;
+                if (!this.nbuf) {
+                    const len = this.ac.sampleRate * 2;
+                    this.nbuf = this.ac.createBuffer(1, len, this.ac.sampleRate);
+                    const d = this.nbuf.getChannelData(0);
+                    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+                }
+                const t = this.ac.currentTime + delay;
+                const s = this.ac.createBufferSource();
+                s.buffer = this.nbuf;
+                const fl = this.ac.createBiquadFilter();
+                fl.type = 'bandpass'; fl.frequency.value = freq; fl.Q.value = q;
+                const g = this.ac.createGain();
+                g.gain.setValueAtTime(vol, t);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+                s.connect(fl); fl.connect(g); g.connect(this.master);
+                s.start(t); s.stop(t + dur + 0.03);
+            },
+            jump(c)   { this.tone(200 + c * 120, 0.2 + c * 0.15, 'triangle', 0.08 + c * 0.06, 500 + c * 700); if (c > 0.95) this.noise(0.3, 0.12, 700, 0.7); },
+            charged() { this.tone(1320, 0.12, 'sine', 0.07); this.tone(1760, 0.16, 'sine', 0.06, null, 0.06); },
+            click()   { this.tone(660, 0.05, 'square', 0.035); },
+            arrive()  { this.tone(523, 0.12, 'triangle', 0.08); this.tone(784, 0.16, 'triangle', 0.08, null, 0.08); },
+            portal()  { this.noise(0.5, 0.18, 900, 0.6); [392, 523, 659, 784].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.08, null, i * 0.06)); }
+        };
+
+        // =====================================================================
+        //  PLAYER (local physics: the games' charge jump + volleyball movement)
+        // =====================================================================
+        function makeBlob(x) {
+            return { x, y: GROUND_Y - R, vx: 0, vy: 0, angle: 0, av: 0, target: 0, charge: 0, charging: false, wasFull: false, hold: 0, face: 1 };
+        }
+        const me = makeBlob(SPAWN_X + (Math.random() - 0.5) * 160);
+        const input = { left: false, right: false, hold: false };
+
+        function updateMe() {
+            const p = me;
+            const airborne = p.y + R < GROUND_Y - 2;
+            const gs = airborne ? AIR_GRAVITY * (Math.abs(p.vy) < APEX_BAND ? APEX_HANG : 1) : 1;
+            p.vy += GRAVITY * gs;
+            p.vx *= AIR_RES; p.vy *= AIR_RES;
+            p.x += p.vx; p.y += p.vy;
+            const onGround = p.y + R >= GROUND_Y - 2;
+            if (p.y + R > GROUND_Y) {
+                const impact = p.vy;
+                p.y = GROUND_Y - R;
+                p.vy = -p.vy * 0.2;
+                if (Math.abs(p.vy) < 0.2) p.vy = 0;
+                p.vx *= 0.85;
+                if (impact > 7) emit(p.x, GROUND_Y, Math.min(14, impact | 0), { color: dustAt(p.x), speed: 2.5, spread: Math.PI * 0.9, life: 22, size: 3, gravity: 0.12 });
+            }
+            if (p.x - R < 0) { p.x = R; p.vx = -p.vx * 0.2; }
+            else if (p.x + R > WORLD_W) { p.x = WORLD_W - R; p.vx = -p.vx * 0.2; }
+
+            if (p.charging && onGround) { if (p.charge < MAX_CHARGE) p.charge++; }
+            else p.charge = 0;
+            const full = p.charge === MAX_CHARGE;
+            if (full && !p.wasFull) Sound.charged();
+            p.wasFull = full;
+
+            let lean = 0;
+            if (input.left) lean -= 0.6;
+            if (input.right) lean += 0.6;
+            if (lean !== 0) {
+                p.target = lean;
+                p.face = lean > 0 ? 1 : -1;
+                const dir = Math.sign(lean);
+                if (onGround && !p.charging && p.hold === 0) { if (p.vx * dir < WALK_MAX) p.vx += lean * WALK_ACCEL; }
+                else if (!onGround && p.vx * dir < AIR_MAX) p.vx += lean * AIR_ACCEL;
+            } else {
+                p.target = onGround ? Math.sin(Date.now() * 0.007) * 0.08 : p.vx * 0.05;
+            }
+            p.av += (p.target - p.angle) * 0.12;
+            p.av *= 0.82;
+            p.angle += p.av;
+
+            // Hold to join: stand in an area and hold S / ↓
+            const area = areaAt(p.x);
+            if (input.hold && area && onGround && !p.charging && !playing) {
+                if (p.hold === 0) Sound.tone(440, 0.08, 'triangle', 0.05);
+                p.hold++;
+                if (p.hold % 14 === 0) emit(p.x + (Math.random() - 0.5) * 50, GROUND_Y - 2, 2, { color: [area.accent, '#ffffff'], speed: 1.4, angle: -Math.PI / 2, spread: 0.6, life: 26, size: 2.5, gravity: -0.03 });
+                if (p.hold >= HOLD_FRAMES) { p.hold = 0; input.hold = false; const pad = padAt(area, p.x); pad ? joinQueue(area, pad) : joinArea(area); }
+            } else p.hold = 0;
+        }
+
+        function pressJump() { if (!playing && entryScreen.classList.contains('hidden')) me.charging = true; }
+        function releaseJump() {
+            const p = me;
+            const onGround = p.y + R >= GROUND_Y - 5;
+            if (onGround && p.charging) {
+                const c = p.charge / MAX_CHARGE;
+                p.vy = -(8.5 + c * 9.5) * JUMP_SCALE;
+                p.vx += Math.sin(p.angle) * (4 + c * 6);
+                p.av += p.face * (0.2 + c * 0.5);
+                Sound.jump(c);
+                emit(p.x, GROUND_Y, 6 + Math.round(c * 16), { color: dustAt(p.x), speed: 2 + c * 3, spread: Math.PI * 0.8, life: 24, size: 3.5, gravity: 0.1 });
+                if (c > 0.95) emit(p.x, GROUND_Y - 10, 24, { color: ['#f1c40f', '#ffeaa7', '#fff'], speed: 5, life: 26, size: 3, gravity: 0.05, drag: 0.92 });
+            }
+            p.charging = false;
+            p.charge = 0;
+        }
+
+        const areaAt = (x) => AREAS.find(a => x >= a.x0 && x <= a.x1) || null;
+        // Ranked pads in every area (hold on one to queue for a matchmade game): size = players, dx = distance from the area's middle
+        const PADS = [{ size: 2, label: '1v1', dx: -150 }, { size: 4, label: '2v2', dx: 150 }];
+        const padAt = (a, x) => PADS.find(q => Math.abs(x - (a.x0 + a.x1) / 2 - q.dx) < 50) || null;
+
+        // =====================================================================
+        //  EFFECTS
+        // =====================================================================
+        const particles = [];
+        function emit(x, y, n, o = {}) {
+            for (let i = 0; i < n; i++) {
+                if (particles.length > 500) particles.shift();
+                const a = (o.angle ?? -Math.PI / 2) + (Math.random() - 0.5) * (o.spread ?? Math.PI * 2);
+                const sp = (o.speed ?? 3) * (0.4 + Math.random() * 0.8);
+                const life = (o.life ?? 30) * (0.6 + Math.random() * 0.6);
+                const color = Array.isArray(o.color) ? o.color[(Math.random() * o.color.length) | 0] : (o.color || '#fff');
+                particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life, max: life, size: (o.size ?? 3) * (0.6 + Math.random() * 0.8), color, g: o.gravity ?? 0.15, drag: o.drag ?? 0.97 });
+            }
+        }
+        function updateParticles() {
+            let w = 0;
+            for (const p of particles) {
+                p.vy += p.g; p.vx *= p.drag; p.vy *= p.drag; p.x += p.vx; p.y += p.vy; p.life--;
+                if (p.life > 0) particles[w++] = p;
+            }
+            particles.length = w;
+        }
+        function dustAt(x) {
+            const a = areaAt(x);
+            if (a && a.ground === 'grass') return ['#b8e994', '#78e08f', '#dfe6e9'];
+            if (a && a.ground === 'sand') return ['#f7e3b5', '#e9cf94'];
+            return ['#a4b0be', '#dfe6e9', '#747d8c'];
+        }
+
+        let toastTimer = 0;
+        function toast(msg, err) {
+            const t = $('toast');
+            if (!msg) return;
+            t.textContent = msg;
+            t.classList.toggle('err', !!err);
+            t.classList.add('on');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => t.classList.remove('on'), 3200);
+        }
+
+        // =====================================================================
+        //  ONLINE: who's in the hub, where they are, and which game room they're in
+        // =====================================================================
+        const net = { id: '', client: null, lobby: null, mine: null, mineReady: false, online: false, subs: new Map(), lastPosKey: '', posTick: 0, metaTick: 0, connecting: false };
+        const peers = new Map();   // id -> { name, team, cos, st, x, y, vx, vy, angle, charge, hold, face, rx, ry, ra, at, seen }
+        let myRoom = null;         // the room we're in, as reported by the game: { g, code, host, n, seated, max, inMatch, active }
+
+        // Same-browser stand-in for a Supabase channel (used with ?nettest): one BroadcastChannel per topic
+        class LocalChannel {
+            constructor(topic) {
+                this.bc = new BroadcastChannel('wobbly-hub:' + topic);
+                this.h = { broadcast: {}, presence: {} };
+                this.state = {};
+                this.me = null;
+                this.bc.onmessage = (e) => this.recv(e.data);
+            }
+            on(type, filter, cb) { (this.h[type][filter.event] = this.h[type][filter.event] || []).push(cb); return this; }
+            fire(type, ev, arg) { (this.h[type][ev] || []).forEach(f => f(arg)); }
+            subscribe(cb) { setTimeout(() => cb && cb('SUBSCRIBED'), 30); return this; }
+            async track(meta) {
+                this.me = meta; this.state[net.id] = [meta];
+                this.bc.postMessage({ k: 'join', id: net.id, meta, hello: true });
+                this.fire('presence', 'sync');
+                return 'ok';
+            }
+            presenceState() { return this.state; }
+            async send(m) { this.bc.postMessage({ k: 'b', event: m.event, payload: m.payload }); return 'ok'; }
+            async unsubscribe() { try { if (this.me) this.bc.postMessage({ k: 'leave', id: net.id }); this.bc.close(); } catch (e) { /* closed */ } return 'ok'; }
+            recv(d) {
+                if (d.k === 'b') this.fire('broadcast', d.event, { event: d.event, payload: d.payload });
+                else if (d.k === 'join') {
+                    this.state[d.id] = [d.meta];
+                    if (d.hello && this.me) this.bc.postMessage({ k: 'join', id: net.id, meta: this.me });
+                    this.fire('presence', 'sync');
+                } else if (d.k === 'leave') {
+                    delete this.state[d.id];
+                    this.fire('presence', 'sync');
+                }
+            }
+        }
+
+        function chan(topic, presenceKey) {
+            if (LOCAL_TEST) return new LocalChannel(topic);
+            const config = { private: true, broadcast: { self: false, ack: false } };
+            if (presenceKey) config.presence = { key: presenceKey };
+            return net.client.channel(topic, { config });
+        }
+        function dropChan(c) {
+            if (!c) return;
+            try { if (net.client && !LOCAL_TEST) net.client.removeChannel(c); else c.unsubscribe(); } catch (e) { /* ignore */ }
+        }
+        function setOnline(on, text) {
+            net.online = on;
+            $('online-dot').classList.toggle('on', on);
+            $('online-text').textContent = text;
+        }
+        function updateOnlineText() {
+            if (!net.online) return;
+            const n = 1 + [...peers.values()].filter(p => p.name).length;
+            $('online-text').textContent = n === 1 ? 'Just you in the hub' : `${n} in the hub`;
+        }
+
+        async function connect() {
+            if (net.connecting || net.lobby) return;
+            net.connecting = true;
+            setOnline(false, 'Connecting…');
+            try {
+                await Account.ready;
+                if (!Account.id) throw new Error((Account.error || 'Could not sign in, so you are offline.') + ' You can still walk around and join games.');
+                net.client = Account.client;
+                net.id = Account.id;
+            } catch (err) {
+                net.connecting = false;
+                setOnline(false, 'Offline');
+                toast(err.message || 'Could not connect. You can still walk around and join games.', true);
+                return;
+            }
+            // Our own line: only we can send on it, so everything on it is verified as ours
+            net.mine = chan(`hub:${HUB_WORLD}:u:${net.id}`);
+            net.mine.subscribe((st) => {
+                if (st === 'SUBSCRIBED') { net.mineReady = true; sendMeta(); sendPos(true); }
+            });
+            // Presence on the shared topic only tells us whose lines to listen to
+            net.lobby = chan(`hub:${HUB_WORLD}`, net.id)
+                .on('presence', { event: 'sync' }, syncPeers);
+            let joined = false;
+            net.lobby.subscribe(async (st) => {
+                if (st === 'SUBSCRIBED' && !joined) {
+                    joined = true;
+                    net.connecting = false;
+                    try { await net.lobby.track({ t: Date.now() }); } catch (e) { /* retried by Supabase */ }
+                    setOnline(true, 'Just you in the hub');
+                    updateOnlineText();
+                } else if (!joined && (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT')) {
+                    net.connecting = false;
+                    dropChan(net.lobby); dropChan(net.mine);
+                    net.lobby = null; net.mine = null; net.mineReady = false;
+                    setOnline(false, 'Offline');
+                    toast('Could not join the hub. Is the hub migration applied? You can still walk around and join games.', true);
+                }
+            });
+        }
+
+        function syncPeers() {
+            const ps = (net.lobby && net.lobby.presenceState()) || {};
+            let fresh = false;
+            for (const id in ps) {
+                if (id === net.id || net.subs.has(id) || !/^[\w-]{6,40}$/.test(id) || net.subs.size >= MAX_PEERS) continue;
+                const c = chan(`hub:${HUB_WORLD}:u:${id}`)
+                    .on('broadcast', { event: 'pos' }, ({ payload }) => onPos(id, payload))
+                    .on('broadcast', { event: 'meta' }, ({ payload }) => onMeta(id, payload));
+                c.subscribe(() => {});
+                net.subs.set(id, c);
+                fresh = true;
+            }
+            for (const [id, c] of net.subs) {
+                if (ps[id]) continue;
+                dropChan(c);
+                net.subs.delete(id);
+                peers.delete(id);
+            }
+            // Someone new: tell them about us soon (once they've had time to listen to our line)
+            if (fresh) { setTimeout(() => { sendMeta(); sendPos(true); }, 500); setTimeout(() => { sendMeta(); sendPos(true); }, 1500); }
+            updateOnlineText();
+        }
+
+        function send(event, payload) {
+            if (!net.mine || !net.mineReady) return;
+            try { const r = net.mine.send({ type: 'broadcast', event, payload }); if (r && r.catch) r.catch(() => {}); } catch (e) { /* dropped */ }
+        }
+        const r1 = (v) => Math.round(v * 10) / 10;
+        function sendPos(force) {
+            const p = me;
+            const key = `${Math.round(p.x)},${Math.round(p.y)},${r1(p.angle)},${p.charge > 5 ? 1 : 0},${p.hold > 0 ? 1 : 0}`;
+            if (!force && key === net.lastPosKey) return;
+            net.lastPosKey = key;
+            send('pos', { x: r1(p.x), y: r1(p.y), vx: r1(p.vx), vy: r1(p.vy), a: Math.round(p.angle * 100) / 100, c: p.charge, h: Math.round(p.hold / HOLD_FRAMES * 100) / 100, f: p.face });
+        }
+        function sendMeta() {
+            send('meta', { name: look.name || 'Player', team: look.team, cos: [look.skin, look.hat, look.boots, look.acc], st: myRoom });
+        }
+
+        // Everything below comes off the wire: clamp numbers, cap strings, resolve cosmetics
+        const num = (v, lo, hi, d = 0) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d);
+        function peer(id) {
+            let q = peers.get(id);
+            if (!q) { q = { name: '', team: 1, cos: [], st: null, x: SPAWN_X, y: GROUND_Y - R, vx: 0, vy: 0, angle: 0, charge: 0, hold: 0, face: 1, rx: null, ry: 0, ra: 0, at: 0 }; peers.set(id, q); }
+            return q;
+        }
+        function onPos(id, m) {
+            if (!m || typeof m !== 'object' || !net.subs.has(id)) return;
+            const q = peer(id);
+            q.x = num(m.x, 0, WORLD_W, q.x); q.y = num(m.y, -2000, GROUND_Y, q.y);
+            q.vx = num(m.vx, -30, 30); q.vy = num(m.vy, -30, 30);
+            q.angle = num(m.a, -3, 3); q.charge = num(m.c, 0, MAX_CHARGE) | 0; q.hold = num(m.h, 0, 1);
+            q.face = m.f === -1 ? -1 : 1;
+            q.at = performance.now();
+            if (q.rx === null) { q.rx = q.x; q.ry = q.y; q.ra = q.angle; }
+        }
+        function onMeta(id, m) {
+            if (!m || typeof m !== 'object' || !net.subs.has(id)) return;
+            const q = peer(id);
+            const fresh = !q.name;
+            q.name = cleanName(m.name) || 'Player';
+            q.team = m.team === 2 ? 2 : 1;
+            const c = Array.isArray(m.cos) ? m.cos : [];
+            q.cos = [Cosmetics.resolve('skin', c[0]), Cosmetics.resolve('hat', c[1]), Cosmetics.resolve('boots', c[2]), Cosmetics.resolve('acc', c[3])];
+            const s = m.st && typeof m.st === 'object' ? m.st : null;
+            q.st = s && AREAS.some(a => a.id === s.g) ? {
+                g: s.g, active: !!s.active, host: !!s.host, inMatch: !!s.inMatch,
+                code: /^[A-Z]{4}$/.test(s.code) ? s.code : '',
+                n: num(s.n, 0, 99) | 0, seated: num(s.seated, 0, 4) | 0, max: num(s.max, 2, 4, 2) | 0
+            } : null;
+            if (fresh) { updateOnlineText(); if (net.online) Sound.arrive(); }
+        }
+
+        // Rooms other hub players are hosting, by game
+        function roomsFor(gameId) {
+            const out = [];
+            for (const q of peers.values()) {
+                const s = q.st;
+                if (s && s.g === gameId && s.active && s.host && s.code) out.push({ code: s.code, host: q.name, n: s.n, seated: s.seated, max: s.max, inMatch: s.inMatch });
+            }
+            return out.sort((a, b) => (a.inMatch - b.inMatch) || (b.n - a.n));
+        }
+        const playingIn = (gameId) => [...peers.values()].filter(q => q.st && q.st.g === gameId).length + (playing && playing.id === gameId ? 1 : 0);
+
+        // =====================================================================
+        //  JOINING A GAME: hold in an area -> the game opens on top of the hub
+        // =====================================================================
+        let playing = null;   // the area whose game is open
+        let ranked = false;   // the open game is a ranked match: its room is not advertised to the hub
+        function joinArea(area, match) {
+            if (queue) cancelQueue();
+            // Join a room someone in the hub is hosting in its lobby; otherwise start one for the next people. A ranked match has its room already.
+            const room = match ? null : roomsFor(area.id).find(r => !r.inMatch);
+            const q = new URLSearchParams({ game: area.id, hub: '1' });
+            if (match) { q.set('join', match.room_code); q.set('match', match.id); }
+            else if (room) q.set('join', room.code); else q.set('create', '1');
+            if (LOCAL_TEST) q.set('nettest', '1');
+            Sound.portal();
+            emit(me.x, me.y, 40, { color: [area.accent, '#ffffff', '#f1c40f'], speed: 6, life: 40, size: 4, gravity: 0.05, drag: 0.94 });
+            playing = area;
+            ranked = !!match;
+            myRoom = { g: area.id, active: false, host: !room && !match, code: room ? room.code : '', n: 0, seated: 0, max: 2, inMatch: false };
+            sendMeta();
+            input.left = input.right = input.hold = false;
+            me.charging = false; me.charge = 0; me.hold = 0;
+            setTimeout(() => {
+                if (playing !== area) return;
+                playFrame.src = `${area.file}?${q}`;
+                playWrap.classList.add('on');
+                playFrame.focus();
+            }, 350);
+        }
+
+        // =====================================================================
+        //  RANKED QUEUE: hold on a 1v1 / 2v2 pad -> matchmaking -> everyone opens the match's room
+        // =====================================================================
+        let queue = null;   // { area, pad, at } while we wait for a match
+        function showQueue() {
+            $('queue-pill').classList.toggle('on', !!queue);
+            if (queue) $('queue-text').textContent = `Searching ${queue.pad.label} ${queue.area.name} · ${Math.floor((Date.now() - queue.at) / 1000)}s`;
+        }
+        setInterval(showQueue, 1000);
+        function cancelQueue() {
+            queue = null;
+            Account.watchMatches(null);
+            Account.leaveQueue().catch(() => {});
+            showQueue();
+        }
+        function onMatch(m) {
+            if (!queue || !m || m.game !== queue.area.id || !Array.isArray(m.players) || !m.players.some(p => p.id === Account.id)) return;
+            const area = queue.area;
+            queue = null;
+            Account.watchMatches(null);
+            showQueue();
+            toast('Match found!');
+            joinArea(area, m);
+        }
+        async function joinQueue(area, pad) {
+            if (queue) return;
+            await Account.ready;
+            if (!Account.id || !(Account.LOCAL || Account.hasProfile())) { toast('Ranked games need an account. Check your connection and name.', true); return; }
+            queue = { area, pad, at: Date.now() };
+            showQueue();
+            Account.watchMatches(onMatch);
+            try { onMatch(await Account.joinQueue(area.id, pad.size)); }   // the match can come back right here (we were the last to join) or through Realtime
+            catch (e) { queue = null; Account.watchMatches(null); showQueue(); toast(e.message || 'Could not join the queue', true); }
+        }
+        $('queue-cancel').addEventListener('click', (e) => { cancelQueue(); e.currentTarget.blur(); });
+        function closeGame(msg, err) {
+            if (!playing) return;
+            playing = null;
+            myRoom = null;
+            if (ranked) { ranked = false; setTimeout(() => Account.refresh().then(showAccount), 1500); }   // the host has reported the result by now
+            playWrap.classList.remove('on');
+            playFrame.src = 'about:blank';
+            sendMeta();
+            window.focus();
+            toast(msg || 'Back in the hub', err);
+        }
+        // Messages from the game we opened (and only from it)
+        window.addEventListener('message', (e) => {
+            if (!playing || e.source !== playFrame.contentWindow) return;
+            const m = e.data;
+            if (!m || typeof m !== 'object' || m.wobbly !== 1) return;
+            if (m.type === 'room') {
+                const next = { g: playing.id, active: !!m.active, host: !!m.host && !ranked, code: /^[A-Z]{4}$/.test(m.code) ? m.code : '', n: num(m.players, 0, 99) | 0, seated: num(m.seated, 0, 4) | 0, max: num(m.max, 2, 4, 2) | 0, inMatch: !!m.inMatch };
+                const changed = JSON.stringify(next) !== JSON.stringify(myRoom);
+                myRoom = next;
+                if (changed) sendMeta();
+            } else if (m.type === 'left') {
+                closeGame(String(m.msg || '').slice(0, 120));
+            }
+        });
+        $('back-btn').addEventListener('click', () => closeGame('Back in the hub'));
+
+        // =====================================================================
+        //  INPUT
+        // =====================================================================
+        const keys = {};
+        const isTyping = (e) => e.target && e.target.tagName === 'INPUT';
+        window.addEventListener('keydown', (e) => {
+            if (isTyping(e)) { if (e.key === 'Enter' && e.target.id === 'name-input') enterHub(); return; }
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
+            keys[e.code] = true;
+            if (!e.repeat) {
+                if (e.code === 'KeyM') { toggleMute(); return; }
+                if (e.code === 'Enter' && !entryScreen.classList.contains('hidden')) { enterHub(); return; }
+                if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') { Sound.init(); pressJump(); }
+            }
+            readKeys();
+        });
+        window.addEventListener('keyup', (e) => {
+            if (isTyping(e)) return;
+            keys[e.code] = false;
+            if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') releaseJump();
+            readKeys();
+        });
+        window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; readKeys(); me.charging = false; me.charge = 0; });
+        const touch = { left: false, right: false, hold: false };
+        function readKeys() {
+            const live = !playing && entryScreen.classList.contains('hidden');
+            input.left = live && !!(keys.KeyA || keys.ArrowLeft || touch.left);
+            input.right = live && !!(keys.KeyD || keys.ArrowRight || touch.right);
+            input.hold = live && !!(keys.KeyS || keys.ArrowDown || keys.KeyE || touch.hold);
+        }
+
+        const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
+        function touchBtn(label, act, cls = '') {
+            const b = document.createElement('div');
+            b.className = `tc-btn ${cls}`;
+            b.textContent = label;
+            const down = (e) => {
+                e.preventDefault(); Sound.init();
+                try { b.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+                b.classList.add('on');
+                if (act === 'jump') pressJump(); else { touch[act] = true; readKeys(); }
+            };
+            const up = (e) => {
+                e.preventDefault();
+                if (!b.classList.contains('on')) return;
+                b.classList.remove('on');
+                if (act === 'jump') releaseJump(); else { touch[act] = false; readKeys(); }
+            };
+            b.addEventListener('pointerdown', down);
+            b.addEventListener('pointerup', up);
+            b.addEventListener('pointercancel', up);
+            b.addEventListener('lostpointercapture', up);
+            b.addEventListener('contextmenu', (e) => e.preventDefault());
+            return b;
+        }
+        if (isTouch) {
+            $('touch-controls').classList.remove('off');
+            $('tc-left').append(touchBtn('◀', 'left'), touchBtn('▶', 'right'));
+            $('tc-right').append(touchBtn('PLAY', 'hold', 'wide play'), touchBtn('JUMP', 'jump', 'wide'));
+            $('controls-pill').innerHTML = 'Walk into an area and hold <b>PLAY</b>';
+        }
+
+        // =====================================================================
+        //  RENDERING
+        // =====================================================================
+        function mulberry32(a) {
+            return function () {
+                a |= 0; a = (a + 0x6D2B79F5) | 0;
+                let t = Math.imul(a ^ (a >>> 15), 1 | a);
+                t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+            };
+        }
+        let renderScale = 1, bgScale = 1, camX = SPAWN_X - W / 2;
+        const bgCanvas = document.createElement('canvas');
+
+        // The static world: sky, skyline, plaza, the game areas' ground, goal, net and signs
+        function buildBackground() {
+            bgScale = Math.min(renderScale, 2);
+            bgCanvas.width = Math.round(WORLD_W * bgScale);
+            bgCanvas.height = Math.round(H * bgScale);
+            const g = bgCanvas.getContext('2d');
+            g.setTransform(bgScale, 0, 0, bgScale, 0, 0);
+            const rnd = mulberry32(2024);
+            const GY = GROUND_Y;
+
+            const sky = g.createLinearGradient(0, 0, 0, GY);
+            sky.addColorStop(0, '#0d1026'); sky.addColorStop(0.55, '#2b1d4f'); sky.addColorStop(1, '#6b2f5f');
+            g.fillStyle = sky; g.fillRect(0, 0, WORLD_W, GY);
+            for (let i = 0; i < 220; i++) {
+                g.fillStyle = `rgba(255,255,255,${0.1 + rnd() * 0.45})`;
+                g.fillRect(rnd() * WORLD_W, rnd() * 280, 1.5, 1.5);
+            }
+            // Moon
+            const mx = SPAWN_X + 260;
+            const glow = g.createRadialGradient(mx, 90, 10, mx, 90, 140);
+            glow.addColorStop(0, 'rgba(255,245,220,0.35)'); glow.addColorStop(1, 'rgba(255,245,220,0)');
+            g.fillStyle = glow; g.fillRect(mx - 140, -50, 280, 280);
+            g.fillStyle = '#fff6dd'; g.beginPath(); g.arc(mx, 90, 34, 0, Math.PI * 2); g.fill();
+            // Skyline, two layers
+            for (const [base, col, win] of [[300, '#1b1638', 0.25], [350, '#120f26', 0.45]]) {
+                for (let x = -20; x < WORLD_W; ) {
+                    const w = 40 + rnd() * 70, h = 60 + rnd() * 120;
+                    g.fillStyle = col; g.fillRect(x, base - h + (GY - base), w, h + 200);
+                    for (let wy = base - h + (GY - base) + 8; wy < GY - 30; wy += 14) {
+                        for (let wx = x + 6; wx < x + w - 8; wx += 12) {
+                            if (rnd() < win) { g.fillStyle = `rgba(255,${200 + (rnd() * 40) | 0},120,${0.25 + rnd() * 0.5})`; g.fillRect(wx, wy, 5, 7); }
+                        }
+                    }
+                    x += w + 4 + rnd() * 14;
+                }
+            }
+            // Plaza ground
+            g.fillStyle = '#2f3542'; g.fillRect(0, GY, WORLD_W, H - GY);
+            g.strokeStyle = 'rgba(255,255,255,0.06)'; g.lineWidth = 1;
+            for (let x = 0; x < WORLD_W; x += 48) { g.beginPath(); g.moveTo(x, GY); g.lineTo(x - 30, H); g.stroke(); }
+            for (const y of [GY + 30, GY + 64]) { g.beginPath(); g.moveTo(0, y); g.lineTo(WORLD_W, y); g.stroke(); }
+
+            // Lamp posts along the plaza
+            for (let lx = 100; lx < WORLD_W; lx += 380) {
+                if (AREAS.some(a => lx > a.x0 - 30 && lx < a.x1 + 30)) continue;
+                const gl = g.createRadialGradient(lx, 300, 4, lx, 300, 160);
+                gl.addColorStop(0, 'rgba(255,230,160,0.28)'); gl.addColorStop(1, 'rgba(255,230,160,0)');
+                g.fillStyle = gl; g.fillRect(lx - 160, 140, 320, 340);
+                g.fillStyle = '#4b5263'; g.fillRect(lx - 3, 300, 6, GY - 300);
+                g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(lx, 298, 9, 0, Math.PI * 2); g.fill();
+            }
+
+            // Centre arch: WOBBLY HUB
+            const cx = SPAWN_X;
+            g.fillStyle = '#3d4455'; g.fillRect(cx - 170, 250, 22, GY - 250); g.fillRect(cx + 148, 250, 22, GY - 250);
+            g.fillStyle = '#1b1f29'; g.fillRect(cx - 190, 196, 380, 62);
+            g.strokeStyle = '#f1c40f'; g.lineWidth = 3; g.shadowBlur = 14; g.shadowColor = '#f1c40f';
+            g.strokeRect(cx - 190, 196, 380, 62);
+            g.shadowBlur = 0;
+            g.font = '900 38px Segoe UI, Roboto, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+            const tw = g.measureText('WOBBLY ').width, hw = g.measureText('HUB').width;
+            g.fillStyle = '#ffffff'; g.fillText('WOBBLY', cx - hw / 2 - 4, 228);
+            g.fillStyle = '#f1c40f'; g.fillText('HUB', cx + tw / 2 - 2, 228);
+            // Direction signs
+            g.font = '800 15px Segoe UI, Roboto, sans-serif';
+            for (const [x, text, col] of [[cx - 110, '◀ SOCCER', '#2ecc71'], [cx + 110, 'VOLLEYBALL ▶', '#ff9f43']]) {
+                g.fillStyle = '#4b5263'; g.fillRect(x - 3, 390, 6, GY - 390);
+                g.fillStyle = '#1b1f29'; g.fillRect(x - 70, 372, 140, 28);
+                g.strokeStyle = col; g.lineWidth = 2; g.strokeRect(x - 70, 372, 140, 28);
+                g.fillStyle = col; g.fillText(text, x, 387);
+            }
+
+            for (const a of AREAS) drawAreaStatic(g, a, rnd);
+
+            const shade = g.createLinearGradient(0, GY, 0, H);
+            shade.addColorStop(0, 'rgba(0,0,0,0)'); shade.addColorStop(1, 'rgba(0,0,0,0.35)');
+            g.fillStyle = shade; g.fillRect(0, GY, WORLD_W, H - GY);
+            g.strokeStyle = 'rgba(255,255,255,0.25)'; g.lineWidth = 4;
+            g.beginPath(); g.moveTo(0, GY); g.lineTo(WORLD_W, GY); g.stroke();
+        }
+
+        function drawAreaStatic(g, a, rnd) {
+            const GY = GROUND_Y, mid = (a.x0 + a.x1) / 2;
+            // Ground patch
+            if (a.ground === 'grass') {
+                for (let x = a.x0, i = 0; x < a.x1; x += 40, i++) { g.fillStyle = i % 2 ? '#229954' : '#27ae60'; g.fillRect(x, GY, Math.min(40, a.x1 - x), H - GY); }
+            } else {
+                g.fillStyle = '#f2d49b'; g.fillRect(a.x0, GY, a.x1 - a.x0, H - GY);
+                for (let i = 0; i < 160; i++) { g.fillStyle = rnd() < 0.5 ? 'rgba(160,120,60,0.25)' : 'rgba(255,255,255,0.35)'; g.fillRect(a.x0 + rnd() * (a.x1 - a.x0), GY + rnd() * (H - GY), 2, 2); }
+            }
+            // Props
+            if (a.id === 'soccer') {
+                const gx = a.x1 - 80, top = GY - 130;   // a goal at the far end
+                g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(gx, top, 70, 130);
+                g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 1;
+                for (let x = gx; x <= gx + 70; x += 10) { g.beginPath(); g.moveTo(x, top); g.lineTo(x, GY); g.stroke(); }
+                for (let y = top; y <= GY; y += 10) { g.beginPath(); g.moveTo(gx, y); g.lineTo(gx + 70, y); g.stroke(); }
+                g.strokeStyle = '#ecf0f1'; g.lineWidth = 6; g.lineCap = 'round';
+                g.beginPath(); g.moveTo(gx + 70, top); g.lineTo(gx, top); g.lineTo(gx, GY); g.stroke();
+                g.lineCap = 'butt';
+                g.fillStyle = 'rgba(255,255,255,0.35)'; g.fillRect(mid - 2, GY, 4, 14);
+            } else {
+                const NX = mid + 60, NT = GY - 120;      // a net, and an umbrella
+                g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(NX - 9, NT, 18, 70);
+                g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 1;
+                for (let x = NX - 9; x <= NX + 9.1; x += 6) { g.beginPath(); g.moveTo(x, NT); g.lineTo(x, NT + 70); g.stroke(); }
+                for (let y = NT; y <= NT + 70; y += 6) { g.beginPath(); g.moveTo(NX - 9, y); g.lineTo(NX + 9, y); g.stroke(); }
+                g.strokeStyle = '#ffffff'; g.lineWidth = 6; g.lineCap = 'round';
+                g.beginPath(); g.moveTo(NX, GY); g.lineTo(NX, NT + 2); g.stroke();
+                g.lineCap = 'butt';
+                g.fillStyle = '#ffffff'; g.fillRect(NX - 12, NT - 4, 24, 7);
+                const ux = a.x0 + 70;
+                g.fillStyle = '#d6d6d6'; g.fillRect(ux - 2, GY - 150, 4, 150);
+                const cols = ['#ff5252', '#ffffff', '#40c4ff', '#ffffff', '#ffd740', '#ffffff'];
+                for (let i = 0; i < 6; i++) {
+                    g.fillStyle = cols[i];
+                    g.beginPath(); g.moveTo(ux, GY - 170); g.arc(ux, GY - 150, 70, Math.PI + i * Math.PI / 6, Math.PI + (i + 1) * Math.PI / 6); g.closePath(); g.fill();
+                }
+            }
+            // Sign: two posts and a board with the game's title (live info is drawn each frame)
+            g.font = '900 30px Segoe UI, Roboto, sans-serif';
+            const titleW = g.measureText(a.title[0] + ' ' + a.title[1]).width;
+            const bw = Math.max(300, Math.ceil(titleW) + 48), bx = mid - bw / 2, by = 120, bh = 96;   // board fits its title
+            g.fillStyle = '#4b5263'; g.fillRect(mid - 110, by + bh, 8, GY - by - bh); g.fillRect(mid + 102, by + bh, 8, GY - by - bh);
+            g.fillStyle = '#1b1f29'; g.fillRect(bx, by, bw, bh);
+            g.strokeStyle = a.accent; g.lineWidth = 3; g.shadowBlur = 14; g.shadowColor = a.accent;
+            g.strokeRect(bx, by, bw, bh);
+            g.shadowBlur = 0;
+            g.font = '900 30px Segoe UI, Roboto, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+            const w1 = g.measureText(a.title[0] + ' ').width, w2 = g.measureText(a.title[1]).width, x0 = mid - (w1 + w2) / 2;
+            g.textAlign = 'left';
+            g.fillStyle = '#ffffff'; g.fillText(a.title[0], x0, by + 32);
+            g.fillStyle = a.accent; g.fillText(a.title[1], x0 + w1, by + 32);
+            g.textAlign = 'center';
+        }
+
+        // ---------- Players (same drawing as the games: every layer comes from the cosmetics registry) ----------
+        const cosCtx = { r: 32, t: 0, look: 1, team: '', teamNum: 1, hat: null, zoom: 1 };
+        function drawBlob(g, x, y, angle, charge, hold, face, team, cos, lookAt, t) {
+            const r = R;
+            const skin = Cosmetics.get('skin', cos[0]);
+            const hat = Cosmetics.get('hat', cos[1]);
+            const c = cosCtx;
+            g.save();
+            g.translate(x, y);
+            c.r = r; c.t = t; c.look = face; c.team = TEAM[team]; c.teamNum = team; c.hat = hat;
+            c.zoom = Cosmetics.zoomOf(g);
+            g.rotate(angle);
+            const k = charge / MAX_CHARGE, hk = hold * 0.5;
+            g.scale(1 + k * 0.15 + hk * 0.1, 1 - k * 0.35 - hk * 0.15);
+            if (charge === MAX_CHARGE && Math.floor(Date.now() / 50) % 2 === 0) { g.shadowBlur = 20; g.shadowColor = '#f1c40f'; }
+            Cosmetics.draw('skin', 'body', g, skin, c);
+            g.shadowBlur = 0;
+            Cosmetics.draw('skin', 'extras', g, skin, c);
+            Cosmetics.draw('boots', 'main', g, Cosmetics.get('boots', cos[2]), c);
+            Cosmetics.draw('hat', 'main', g, hat, c);
+            const ex = r * 0.4 * face, ey = -r * 0.4;
+            g.fillStyle = '#ffffff';
+            g.beginPath(); g.arc(ex, ey, 8, 0, Math.PI * 2); g.fill();
+            let px = r * 0.45 * face, py = ey;
+            if (lookAt) {
+                const a = Math.atan2(lookAt.y - y, lookAt.x - x) - angle;
+                px = ex + Math.cos(a) * 3.5; py = ey + Math.sin(a) * 3.5;
+            }
+            g.fillStyle = '#000000';
+            g.beginPath(); g.arc(px, py, 4, 0, Math.PI * 2); g.fill();
+            Cosmetics.draw('acc', 'main', g, Cosmetics.get('acc', cos[3]), c);
+            const lift = Cosmetics.hatLift(hat, r);
+            const ring = (frac, col) => {
+                g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 6;
+                g.beginPath(); g.arc(0, -r * 1.5 - lift, 15, 0, Math.PI * 2); g.stroke();
+                g.strokeStyle = col; g.lineWidth = 4;
+                g.beginPath(); g.arc(0, -r * 1.5 - lift, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); g.stroke();
+            };
+            if (charge > 5) ring(k, '#f1c40f');
+            else if (hold > 0) ring(hold, '#ffffff');
+            g.restore();
+            return lift;
+        }
+        function nameTag(x, y, lift, text, col, sub) {
+            const ty = Math.max(16, y - R * 2.2 - lift);
+            ctx.font = '800 13px Segoe UI, Roboto, sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+            ctx.strokeText(text, x, ty); ctx.fillStyle = col; ctx.fillText(text, x, ty);
+            if (sub) {
+                ctx.font = '700 11px Segoe UI, Roboto, sans-serif';
+                ctx.strokeText(sub, x, ty - 15); ctx.fillStyle = '#f1c40f'; ctx.fillText(sub, x, ty - 15);
+            }
+        }
+
+        // Per-frame area overlay: glowing zone, live room info on the sign, and the prompt when you're inside
+        function drawAreaLive(a, t) {
+            const mid = (a.x0 + a.x1) / 2, inside = !playing && areaAt(me.x) === a;
+            const pulse = 0.5 + 0.5 * Math.sin(t * 0.004);
+            const grd = ctx.createLinearGradient(0, GROUND_Y - 70, 0, GROUND_Y);
+            grd.addColorStop(0, 'rgba(0,0,0,0)');
+            grd.addColorStop(1, hexA(a.accent, inside ? 0.35 + pulse * 0.15 : 0.12 + pulse * 0.06));
+            ctx.fillStyle = grd; ctx.fillRect(a.x0, GROUND_Y - 70, a.x1 - a.x0, 70);
+            ctx.fillStyle = hexA(a.accent, inside ? 0.9 : 0.45);
+            ctx.fillRect(a.x0, GROUND_Y - 2, 4, -26); ctx.fillRect(a.x1 - 4, GROUND_Y - 2, 4, -26);
+            for (const q of PADS) {   // ranked pads
+                const x = mid + q.dx, on = inside && padAt(a, me.x) === q;
+                ctx.fillStyle = hexA(a.accent, on ? 0.9 : 0.5); ctx.fillRect(x - 50, GROUND_Y - 5, 100, 5);
+                ctx.font = '800 12px Segoe UI, Roboto, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillStyle = on ? '#ffffff' : 'rgba(255,255,255,0.65)'; ctx.fillText(`${q.label} RANKED`, x, GROUND_Y - 17);
+            }
+            // Live info
+            const rooms = roomsFor(a.id), n = playingIn(a.id);
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.font = '700 13px Segoe UI, Roboto, sans-serif'; ctx.fillStyle = '#dfe6e9';
+            const lobby = rooms.filter(r => !r.inMatch);
+            const line1 = n ? `${n} playing · ${rooms.length} room${rooms.length === 1 ? '' : 's'}` : 'Nobody playing yet';
+            const line2 = lobby.length ? `Room ${lobby[0].code} is waiting (${lobby[0].n} in lobby)` : rooms.length ? 'Matches in progress · hold to start a new room' : 'Hold to start a room';
+            ctx.fillText(line1, mid, 120 + 60);
+            ctx.fillStyle = lobby.length ? '#f1c40f' : '#8a98a5'; ctx.font = '700 12px Segoe UI, Roboto, sans-serif';
+            ctx.fillText(line2, mid, 120 + 79);
+            if (inside && !playing) {
+                const pad = padAt(a, me.x), what = pad ? `ranked ${pad.label}` : 'to join';
+                const label = isTouch ? `Hold PLAY ${pad ? 'for ' : ''}${what}` : `Hold S / ↓ ${pad ? 'for ' : ''}${what}`;
+                ctx.font = '900 18px Segoe UI, Roboto, sans-serif';
+                ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+                const y = 252 + Math.sin(t * 0.006) * 3;
+                ctx.strokeText(label, mid, y); ctx.fillStyle = '#ffffff'; ctx.fillText(label, mid, y);
+            }
+        }
+        function hexA(hex, a) {
+            const n = parseInt(hex.slice(1), 16);
+            return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+        }
+        // Arrows at the screen edges pointing to areas you can't see
+        function drawEdgeArrows() {
+            for (const a of AREAS) {
+                if (a.x1 - camX > 0 && a.x0 - camX < W) continue;   // some of it is on screen
+                const left = a.x1 - camX <= 0, x = left ? 16 : W - 16, y = 300;
+                ctx.fillStyle = a.accent; ctx.globalAlpha = 0.9;
+                ctx.beginPath();
+                if (left) { ctx.moveTo(x, y); ctx.lineTo(x + 14, y - 10); ctx.lineTo(x + 14, y + 10); }
+                else { ctx.moveTo(x, y); ctx.lineTo(x - 14, y - 10); ctx.lineTo(x - 14, y + 10); }
+                ctx.closePath(); ctx.fill();
+                ctx.font = '800 11px Segoe UI, Roboto, sans-serif'; ctx.textAlign = left ? 'left' : 'right'; ctx.textBaseline = 'middle';
+                ctx.fillText(a.title[1], left ? x + 20 : x - 20, y);
+                ctx.globalAlpha = 1;
+            }
+        }
+
+        function render(t) {
+            ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+            ctx.clearRect(0, 0, W, H);
+            ctx.drawImage(bgCanvas, camX * bgScale, 0, W * bgScale, H * bgScale, 0, 0, W, H);
+            ctx.save();
+            ctx.translate(-camX, 0);
+            for (const a of AREAS) drawAreaLive(a, t);
+            // Shadows
+            const all = [...peers.values()].filter(q => q.name && q.rx !== null).map(q => ({ x: q.rx, y: q.ry }));
+            all.push(me);
+            ctx.fillStyle = '#000';
+            for (const b of all) {
+                const h = GROUND_Y - (b.y + R), alpha = Math.max(0, 0.32 - h / 900);
+                if (alpha <= 0) continue;
+                ctx.globalAlpha = alpha;
+                ctx.beginPath(); ctx.ellipse(b.x, GROUND_Y + 3, R * Math.max(0.35, 1 - h / 500), 5, 0, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            // Other players (behind you), then you
+            for (const q of peers.values()) {
+                if (!q.name || q.rx === null || q.rx < camX - 80 || q.rx > camX + W + 80) continue;
+                const inGame = q.st && q.st.g;
+                if (inGame) ctx.globalAlpha = 0.65;
+                const lift = drawBlob(ctx, q.rx, q.ry, q.ra, q.charge, q.hold, q.face, q.team, q.cos, me, t);
+                ctx.globalAlpha = 1;
+                const area = inGame ? AREAS.find(a => a.id === q.st.g) : null;
+                nameTag(q.rx, q.ry, lift, q.name, '#ffffff', area ? `PLAYING ${area.title[1]}${q.st.code ? ' · ' + q.st.code : ''}` : '');
+            }
+            const lift = drawBlob(ctx, me.x, me.y, me.angle, me.charge, me.hold / HOLD_FRAMES, me.face, look.team, [look.skin, look.hat, look.boots, look.acc], null, t);
+            nameTag(me.x, me.y, lift, (look.name || 'Player') + ' (you)', TEAM[look.team], '');
+            // Particles
+            for (const p of particles) {
+                ctx.globalAlpha = Math.max(0, p.life / p.max);
+                ctx.fillStyle = p.color;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            ctx.restore();
+            drawEdgeArrows();
+        }
+
+        // Smoothly follow each remote player: aim a little ahead of their last position
+        function updatePeers() {
+            const now = performance.now();
+            for (const q of peers.values()) {
+                if (q.rx === null) continue;
+                const age = Math.min(12, (now - q.at) / (1000 / 60));
+                const tx = q.x + q.vx * age, ty = Math.min(GROUND_Y - R, q.y + q.vy * age);
+                if (Math.abs(tx - q.rx) > 300) { q.rx = tx; q.ry = ty; }
+                q.rx += (tx - q.rx) * 0.3;
+                q.ry += (ty - q.ry) * 0.3;
+                q.ra += (q.angle - q.ra) * 0.3;
+            }
+        }
+
+        // =====================================================================
+        //  ENTRY SCREEN: name and look
+        // =====================================================================
+        const prevCtx = $('preview').getContext('2d');
+        function drawPreview(t) {
+            const g = prevCtx;
+            g.setTransform(2, 0, 0, 2, 0, 0);
+            g.clearRect(0, 0, 160, 160);
+            g.fillStyle = 'rgba(0,0,0,0.3)';
+            g.beginPath(); g.ellipse(80, 102 + 32 * 1.7 + 2, 30, 4, 0, 0, Math.PI * 2); g.fill();
+            drawBlob(g, 80, 102, Math.sin(t * 0.003) * 0.12, 0, 0, 1, look.team, [look.skin, look.hat, look.boots, look.acc], null, t);
+        }
+        function refreshEntry() {
+            document.querySelectorAll('#entry-screen .picker').forEach(pk => {
+                const k = pk.dataset.key;
+                pk.querySelector('.pick-label').textContent = k === 'team' ? (look.team === 1 ? 'Blue' : 'Red') : Cosmetics.get(k, look[k]).name;
+            });
+            $('mute-btn').textContent = look.muted ? '🔇' : '🔊';
+        }
+        document.querySelectorAll('#entry-screen .picker').forEach(pk => {
+            const k = pk.dataset.key;
+            pk.querySelectorAll('.arrow').forEach(a => a.addEventListener('click', () => {
+                Sound.init(); Sound.click();
+                if (k === 'team') look.team = look.team === 1 ? 2 : 1;
+                else look[k] = Cosmetics.step(k, look[k], Number(a.dataset.dir));
+                refreshEntry();
+                a.blur();
+            }));
+        });
+        // The account panel and the ratings (Elo, wins and losses per game)
+        const $msg = (t) => { $('acct-msg').textContent = t || ''; };
+        function showAccount() {
+            const r = Games.list.map(g => { const x = Account.ratings[g.id]; return x ? `${g.name} ${x.elo} · ${x.wins}W ${x.losses}L` : `${g.name} unranked`; }).join('  |  ');
+            $('rating-pill').textContent = r;
+            $('acct-line').textContent = (Account.LOCAL ? 'Test mode: local account only' : !Account.id ? 'Offline: no account' : Account.email ? `Account: ${Account.email}` : 'Guest account on this device') + ' · ' + r;
+            $('save-acct').classList.toggle('hide', !Account.client || !!Account.email);
+            $('signin-acct').classList.toggle('hide', !Account.client);
+            $('email-input').classList.toggle('hide', !Account.client);
+        }
+        const emailAction = (btn, fn, done) => btn.addEventListener('click', async () => {
+            const email = $('email-input').value.trim();
+            if (!/^\S+@\S+\.\S+$/.test(email)) { $msg('Enter your email address'); return; }
+            $msg('Sending…');
+            const err = await fn(email);
+            $msg(err ? (err.message || 'Could not send the email') : done);
+        });
+        emailAction($('save-acct'), Account.saveEmail, 'Check your email to confirm. Then you can sign in on other devices.');
+        emailAction($('signin-acct'), Account.signInEmail, 'Check your email for the sign-in link.');
+        Account.ready.then(() => {
+            if ($('name-input').value === look.name) { pullLook(); $('name-input').value = look.name; } else pullLook();
+            refreshEntry(); showAccount();
+        });
+
+        let entered = false, entering = false;
+        async function enterHub() {
+            if (entryScreen.classList.contains('hidden') || entering) return;
+            entering = true;
+            Sound.init(); Sound.click();
+            $msg('Saving…');
+            await Account.ready;
+            const r = await Account.saveName(cleanName($('name-input').value) || look.name || 'Player');
+            entering = false;
+            if (r.error) { $msg(r.error); return; }
+            $msg('');
+            look.name = Account.name();
+            $('name-input').value = look.name;
+            saveLook();
+            showAccount();
+            entryScreen.classList.add('hidden');
+            $('name-input').blur();
+            if (!entered) { entered = true; connect(); toast(`Welcome, ${look.name}!`); }
+            else sendMeta();
+            readKeys();
+        }
+        $('enter-btn').addEventListener('click', enterHub);
+        $('look-btn').addEventListener('click', (e) => {
+            Sound.init(); Sound.click();
+            $('name-input').value = look.name;
+            $('enter-btn').textContent = 'Done';
+            entryScreen.classList.remove('hidden');
+            readKeys();
+            e.currentTarget.blur();
+        });
+        function toggleMute() { look.muted = !look.muted; saveLook(); refreshEntry(); }
+        $('mute-btn').addEventListener('click', (e) => { Sound.init(); toggleMute(); e.currentTarget.blur(); });
+
+        // =====================================================================
+        //  SCALING (fit any screen, crisp on high-DPI)
+        // =====================================================================
+        function fit() {
+            const s = Math.min(window.innerWidth / W, window.innerHeight / H) * 0.98;
+            container.style.transform = `scale(${s})`;
+            const k = Math.min(3, Math.max(1, s * (window.devicePixelRatio || 1)));
+            if (Math.abs(k - renderScale) > 0.01 || canvas.width !== Math.round(W * k)) {
+                renderScale = k;
+                canvas.width = Math.round(W * k);
+                canvas.height = Math.round(H * k);
+                buildBackground();
+            }
+        }
+        window.addEventListener('resize', fit);
+        window.addEventListener('orientationchange', fit);
+        window.addEventListener('pagehide', () => { if (queue) Account.leaveQueue().catch(() => {}); dropChan(net.lobby); dropChan(net.mine); for (const c of net.subs.values()) dropChan(c); });
+
+        // =====================================================================
+        //  MAIN LOOP — fixed timestep
+        // =====================================================================
+        function tick() {
+            updateMe();
+            updateParticles();
+            updatePeers();
+            camX += (Math.max(0, Math.min(WORLD_W - W, me.x - W / 2)) - camX) * 0.12;
+            if (++net.posTick >= POS_EVERY) { net.posTick = 0; sendPos(false); }
+            if (++net.metaTick >= META_EVERY) { net.metaTick = 0; sendMeta(); sendPos(true); }
+        }
+        const STEP = 1000 / 60;
+        let last = performance.now(), acc = 0;
+        function advance(now) {
+            acc += Math.min(250, now - last);
+            last = now;
+            let steps = 0;
+            while (acc >= STEP && steps < 8) { tick(); acc -= STEP; steps++; }
+            if (steps === 8) acc = 0;
+        }
+        // Keep heartbeats going while a game is open in front of the hub (rAF may slow down)
+        setInterval(() => { if (playing) advance(performance.now()); }, 100);
+        function frame(now) {
+            if (!playing) {
+                advance(now);
+                render(now);
+                if (!entryScreen.classList.contains('hidden')) drawPreview(now);
+            }
+            requestAnimationFrame(frame);
+        }
+
+        $('name-input').value = look.name;
+        showAccount();
+        camX = Math.max(0, Math.min(WORLD_W - W, me.x - W / 2));
+        fit();
+        buildBackground();
+        refreshEntry();
+        requestAnimationFrame(frame);
+    })();
+    </script>
+</body>
+</html>

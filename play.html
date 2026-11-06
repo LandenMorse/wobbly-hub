@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wobbly Hub</title>
+    <style>
+        :root {
+            --bg-dark: #121214;
+            --neon-blue: #00d2ff;
+            --neon-red: #ff3838;
+            --gold: #f1c40f;
+            --card-bg: rgba(255, 255, 255, 0.07);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body { height: 100%; }
+
+        body {
+            background: radial-gradient(circle at 50% 30%, #1d1d24, var(--bg-dark) 70%);
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        button { font: inherit; border: none; cursor: pointer; outline: none; }
+
+        #game-container {
+            position: relative;
+            flex: none;
+            width: 1024px;
+            height: 576px;
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            background: #1e272e;
+            transform-origin: center center;
+            touch-action: none;
+            overflow: hidden;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 1024px;
+            height: 576px;
+            border-radius: 12px;
+        }
+
+        /* ---------- Overlays ---------- */
+        .overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(12, 16, 20, 0.86);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            border-radius: 12px;
+            transition: opacity 0.25s ease;
+        }
+        .overlay.hidden { opacity: 0; pointer-events: none; }
+
+        .game-title {
+            font-size: 3rem;
+            font-weight: 900;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            line-height: 1;
+            text-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
+        }
+        .game-title span { color: var(--gold); }
+
+        .subtitle { color: #8a98a5; font-size: 0.95rem; margin: 0.35rem 0 0.7rem; }
+
+        .menu-grid { display: flex; gap: 16px; align-items: stretch; margin-bottom: 0.8rem; }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+        }
+
+        .player-card {
+            width: 250px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .p1-card { border-bottom: 4px solid var(--neon-blue); }
+        .p2-card { border-bottom: 4px solid var(--neon-red); }
+        .player-card h3 { font-size: 1rem; letter-spacing: 1px; text-transform: uppercase; }
+        .p1-card h3 { color: var(--neon-blue); }
+        .p2-card h3 { color: var(--neon-red); }
+
+        .preview { width: 160px; height: 160px; }
+
+        .picker { display: flex; align-items: center; gap: 6px; width: 100%; }
+        .pick-kind {
+            font-size: 0.68rem; color: #8a98a5; text-transform: uppercase;
+            letter-spacing: 1px; width: 34px;
+        }
+        .pick-label { flex: 1; text-align: center; color: #fff; font-weight: 700; font-size: 0.9rem; white-space: nowrap; }
+        .arrow {
+            width: 30px; height: 30px; border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 0.75rem;
+            transition: background 0.15s;
+        }
+        .arrow:hover { background: rgba(255, 255, 255, 0.22); }
+
+        .keys { color: #a4b0be; font-size: 0.74rem; text-align: center; line-height: 1.6; margin-top: 2px; }
+        .keys b {
+            display: inline-block; background: #fff; color: #000; border-radius: 4px;
+            padding: 0 5px; font-size: 0.7rem; line-height: 1.4; box-shadow: 0 2px 0 #bdc3c7;
+        }
+
+        .settings {
+            width: 420px; padding: 12px 14px;
+            display: flex; flex-direction: column; gap: 7px;
+            border-bottom: 4px solid var(--gold);
+        }
+        .setting label, .mini-label {
+            display: block; font-size: 0.68rem; color: #8a98a5;
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;
+        }
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chip {
+            padding: 6px 12px; border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08); color: #dfe6e9;
+            font-weight: 600; font-size: 0.82rem; transition: background 0.15s;
+        }
+        .chip:hover { background: rgba(255, 255, 255, 0.16); }
+        .chip.active { background: var(--gold); color: #000; }
+        .chips.tight { gap: 5px; flex-wrap: nowrap; }
+        .chips.tight .chip { padding: 6px 9px; font-size: 0.78rem; white-space: nowrap; }
+        .mode-desc { color: #a4b0be; font-size: 0.78rem; margin-top: 5px; min-height: 1.1em; }
+        .row2 { display: flex; gap: 14px; }
+        .row2 > div { flex: 1; min-width: 0; }
+        .ball-preview { width: 30px; height: 30px; flex: none; }
+
+        .big-btn {
+            padding: 0.8rem 3.2rem;
+            font-size: 1.3rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            background: var(--gold);
+            color: #000;
+            border-radius: 50px;
+            box-shadow: 0 10px 25px rgba(241, 196, 15, 0.35);
+            transition: transform 0.1s;
+        }
+        .big-btn:hover { transform: translateY(-2px); }
+        .big-btn.ghost { background: rgba(255, 255, 255, 0.1); color: #fff; box-shadow: none; }
+        .btn-row { display: flex; gap: 14px; }
+
+        .hint { color: #5f6b76; font-size: 0.75rem; margin-top: 0.5rem; }
+
+        #celebration-screen { background: rgba(10, 12, 16, 0.6); }
+        .ft-label { color: #8a98a5; letter-spacing: 4px; font-weight: 800; font-size: 0.9rem; margin-bottom: 0.4rem; }
+        #winner-text { font-size: 3.5rem; font-weight: 900; color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,0.4); }
+        #final-score { font-size: 2.6rem; font-weight: 800; color: #fff; margin: 0.4rem 0 0.2rem; }
+        #final-score .s1 { color: var(--neon-blue); }
+        #final-score .s2 { color: var(--neon-red); }
+        #match-summary { color: #a4b0be; margin-bottom: 1.6rem; }
+        .pause-title { font-size: 3rem; font-weight: 900; color: #fff; margin-bottom: 1.5rem; letter-spacing: 3px; }
+
+        /* ---------- HUD ---------- */
+        #hud {
+            position: absolute;
+            top: 18px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            pointer-events: none;
+            z-index: 5;
+        }
+        .score-board {
+            background: rgba(0, 0, 0, 0.55);
+            padding: 0.3rem 1.3rem;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .score-text { font-size: 2.3rem; font-weight: 800; min-width: 1.4ch; text-align: center; display: inline-block; }
+        #p1-score { color: var(--neon-blue); }
+        #p2-score { color: var(--neon-red); }
+        .score-divider { color: #8a98a5; font-size: 2rem; }
+        .tag { font-size: 0.72rem; font-weight: 800; letter-spacing: 1px; padding: 2px 8px; border-radius: 6px; color: #000; }
+        #p1-tag { background: var(--neon-blue); }
+        #p2-tag { background: var(--neon-red); }
+        #match-info {
+            background: rgba(0, 0, 0, 0.45); color: #dfe6e9; font-size: 0.78rem; font-weight: 700;
+            letter-spacing: 2px; padding: 3px 12px; border-radius: 20px;
+        }
+        #match-info.low { color: #ff6b6b; }
+        .pop { animation: pop 0.45s ease; }
+        @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.6); } 100% { transform: scale(1); } }
+
+        .icon-btn {
+            position: absolute; top: 18px; z-index: 6;
+            width: 40px; height: 40px; border-radius: 12px;
+            background: rgba(0, 0, 0, 0.5); color: #fff; font-size: 0.95rem;
+        }
+        #pause-btn { right: 18px; }
+        #mute-btn { right: 66px; }
+
+        /* ---------- Touch controls ---------- */
+        #touch-controls { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
+        #touch-controls.off { display: none; }
+        .tc-cluster { position: absolute; bottom: 12px; display: flex; gap: 12px; align-items: flex-end; }
+        .tc-cluster.left { left: 108px; }
+        .tc-cluster.right { right: 108px; }
+        .tc-btn {
+            pointer-events: auto; touch-action: none;
+            width: 76px; height: 76px; border-radius: 50%;
+            background: rgba(255, 255, 255, 0.14); border: 2px solid rgba(255, 255, 255, 0.3);
+            color: #fff; font-size: 1.5rem; font-weight: 800;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .tc-btn.jump { width: 92px; height: 92px; font-size: 0.95rem; letter-spacing: 1px; }
+        .tc-btn.dig { font-size: 0.85rem; letter-spacing: 1px; }
+        .tc-btn.p1 { border-color: var(--neon-blue); }
+        .tc-btn.p2 { border-color: var(--neon-red); }
+        .tc-btn.on { background: rgba(255, 255, 255, 0.38); }
+
+        #rotate-hint {
+            display: none; position: fixed; inset: 0; z-index: 100;
+            background: var(--bg-dark); color: #fff;
+            flex-direction: column; align-items: center; justify-content: center;
+            gap: 12px; font-size: 1.1rem; text-align: center; padding: 2rem;
+        }
+        #rotate-hint .big { font-size: 3rem; }
+        @media (orientation: portrait) and (pointer: coarse) {
+            #rotate-hint { display: flex; }
+        }
+
+        /* ---------- Online ---------- */
+        .hide { display: none !important; }
+        .online-card { width: 470px; padding: 14px 18px; display: flex; flex-direction: column; gap: 8px; border-bottom: 4px solid var(--neon-blue); }
+        .online-card input {
+            width: 100%; padding: 8px 12px; border-radius: 10px; outline: none;
+            border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(0, 0, 0, 0.35);
+            color: #fff; font-size: 0.95rem; user-select: text; -webkit-user-select: text;
+        }
+        .online-card input:focus { border-color: var(--gold); }
+        .ol-row { display: flex; gap: 10px; align-items: center; }
+        .ol-row > div { flex: 1; min-width: 0; }
+        .mid-btn {
+            padding: 0.55rem 1.3rem; font-size: 0.92rem; font-weight: 800; text-transform: uppercase;
+            background: var(--gold); color: #000; border-radius: 50px; white-space: nowrap;
+        }
+        .mid-btn.ghost { background: rgba(255, 255, 255, 0.1); color: #fff; }
+        .mid-btn:disabled, .big-btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+        #ol-code { text-transform: uppercase; letter-spacing: 4px; font-weight: 800; text-align: center; }
+        .room-code { font-size: 2.3rem; font-weight: 900; letter-spacing: 8px; color: var(--gold); text-align: center; line-height: 1; margin-bottom: 4px; user-select: text; -webkit-user-select: text; }
+        .ol-players { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .ol-seat {
+            padding: 6px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.06); color: #dfe6e9;
+            font-size: 0.85rem; font-weight: 700; border-left: 4px solid; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ol-seat.t1 { border-color: var(--neon-blue); }
+        .ol-seat.t2 { border-color: var(--neon-red); }
+        .ol-seat.empty { color: #6c7a86; font-weight: 600; }
+        /* seat picking (games with pickSeats): Blue and Red columns of buttons */
+        .ol-team-head { font-size: 0.68rem; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; text-align: center; }
+        .ol-team-head.t1 { color: var(--neon-blue); }
+        .ol-team-head.t2 { color: var(--neon-red); }
+        .ol-pick .ol-seat { width: 100%; text-align: left; cursor: default; transition: background 0.15s; }
+        .ol-pick .ol-seat.empty { color: #8a98a5; background: rgba(255, 255, 255, 0.03); }
+        .ol-pick .ol-seat.can { cursor: pointer; }
+        .ol-pick .ol-seat.can:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+        .ol-pick .ol-seat.mine { box-shadow: inset 0 0 0 2px var(--gold); }
+        .ol-bench { grid-column: 1 / -1; color: #a4b0be; font-size: 0.76rem; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ol-bench b { color: #fff; }
+        #ol-host-settings { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+        .ol-status { color: #a4b0be; font-size: 0.8rem; text-align: center; min-height: 1.2em; }
+        .ol-status.err { color: #ff6b6b; }
+        .ol-note { color: #6c7a86; font-size: 0.72rem; line-height: 1.4; }
+
+        /* ---------- Cosmetic browser (grid picker) ---------- */
+        .pick-label { cursor: pointer; border-radius: 6px; padding: 3px 0; transition: background 0.15s; }
+        .pick-label:hover { background: rgba(255, 255, 255, 0.1); }
+        #cos-screen { z-index: 30; justify-content: flex-start; padding: 18px 22px 14px; }
+        .cos-head { display: flex; gap: 12px; align-items: center; width: 100%; margin-bottom: 12px; }
+        .cos-head h2 { color: #fff; font-size: 1.15rem; letter-spacing: 1px; text-transform: uppercase; white-space: nowrap; }
+        .cos-count { color: #8a98a5; font-size: 0.8rem; white-space: nowrap; }
+        #cos-search {
+            flex: 1; min-width: 0; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 0.9rem; outline: none; user-select: text; -webkit-user-select: text;
+        }
+        #cos-search:focus { border-color: var(--gold); }
+        #cos-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px;
+            width: 100%; flex: 1; min-height: 0; overflow-y: auto; align-content: start; padding-right: 4px;
+        }
+        .cos-item {
+            display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px 7px;
+            border-radius: 12px; background: rgba(255, 255, 255, 0.06); color: #dfe6e9;
+            font-size: 0.72rem; font-weight: 700; border: 2px solid transparent; transition: background 0.15s;
+        }
+        .cos-item:hover { background: rgba(255, 255, 255, 0.14); }
+        .cos-item.active { border-color: var(--gold); }
+        .cos-item canvas { width: 80px; height: 80px; }
+        .cos-item span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+        .cos-item.r-rare { box-shadow: inset 0 -3px 0 #3498db; }
+        .cos-item.r-epic { box-shadow: inset 0 -3px 0 #9b59b6; }
+        .cos-item.r-legendary { box-shadow: inset 0 -3px 0 #f1c40f; }
+        .cos-empty { color: #8a98a5; grid-column: 1 / -1; text-align: center; padding: 30px 0; }
+    </style>
+    <script src="shared/hub-link.js"></script>
+</head>
+<body>
+    <div id="rotate-hint"><div class="big">📱↻</div>Rotate your phone to landscape to play.</div>
+
+    <div id="game-container">
+        <!-- Main Menu -->
+        <div id="menu-screen" class="overlay">
+            <h1 class="game-title">Wobbly <span id="g-name"></span></h1>
+            <p class="subtitle" id="g-subtitle"></p>
+
+            <div class="menu-grid">
+                <div class="card player-card p1-card">
+                    <h3 id="p1-title">Player 1</h3>
+                    <canvas class="preview" id="p1-preview" width="320" height="320"></canvas>
+                    <div class="picker" data-target="p1Skin"><span class="pick-kind">Skin</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-target="p1Hat"><span class="pick-kind">Hat</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-target="p1Boots"><span class="pick-kind">Boots</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-target="p1Acc"><span class="pick-kind">Acc</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <p class="keys" id="p1-keys"></p>
+                </div>
+
+                <div class="card settings">
+                    <div class="setting">
+                        <label>Mode</label>
+                        <div class="chips" id="mode-chips"></div>
+                        <p class="mode-desc" id="mode-desc"></p>
+                    </div>
+                    <div class="setting" id="length-setting">
+                        <label id="length-label">First to</label>
+                        <div class="chips" id="length-chips"></div>
+                    </div>
+                    <div class="setting">
+                        <label>Opponent</label>
+                        <div class="chips" id="opp-chips"></div>
+                    </div>
+                    <div class="row2">
+                        <div class="setting" id="field-setting" style="flex: none; width: 140px;"><label>Field</label><div class="chips tight" id="field-chips"></div></div>
+                        <div class="setting"><label>Teams</label><div class="chips tight" id="teams-chips"></div></div>
+                    </div>
+                    <div class="row2">
+                        <div>
+                            <span class="mini-label">Ball</span>
+                            <div class="picker" data-target="ball"><canvas class="ball-preview" id="ball-preview" width="60" height="60"></canvas><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                        </div>
+                        <div>
+                            <span class="mini-label">Arena</span>
+                            <div class="picker" data-target="arena"><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card player-card p2-card">
+                    <h3 id="p2-title">Player 2</h3>
+                    <canvas class="preview" id="p2-preview" width="320" height="320"></canvas>
+                    <div class="picker" data-target="p2Skin"><span class="pick-kind">Skin</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-target="p2Hat"><span class="pick-kind">Hat</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-target="p2Boots"><span class="pick-kind">Boots</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div class="picker" data-target="p2Acc"><span class="pick-kind">Acc</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <p class="keys" id="p2-keys"></p>
+                </div>
+            </div>
+
+            <div class="btn-row">
+                <button id="start-btn" class="big-btn"></button>
+                <button id="online-btn" class="big-btn ghost">Play Online</button>
+            </div>
+            <p class="hint" id="g-hint"></p>
+        </div>
+
+        <!-- Pause -->
+        <div id="pause-screen" class="overlay hidden">
+            <h2 class="pause-title">PAUSED</h2>
+            <div class="btn-row">
+                <button id="resume-btn" class="big-btn">Resume</button>
+                <button id="restart-btn" class="big-btn ghost">Restart</button>
+                <button id="pause-menu-btn" class="big-btn ghost">Menu</button>
+            </div>
+        </div>
+
+        <!-- Online rooms -->
+        <div id="online-screen" class="overlay hidden">
+            <h1 class="game-title" style="font-size: 2.2rem; margin-bottom: 0.8rem;">Play <span>Online</span></h1>
+            <div class="card online-card">
+                <div id="ol-home">
+                    <p class="ol-note">Playing as <b id="ol-name"></b>. Your name is set in the <a href="index.html" style="color: inherit;">Hub</a>.</p>
+                    <div class="ol-row" style="margin-top: 12px;">
+                        <button id="ol-create" class="mid-btn">Create room</button>
+                        <div><input id="ol-code" maxlength="4" placeholder="CODE" spellcheck="false" autocomplete="off"></div>
+                        <button id="ol-join" class="mid-btn ghost">Join</button>
+                    </div>
+                    <p class="ol-note" style="margin-top: 8px;">Your look is the Player 1 card (the same look in every game). The host picks the mode. Controls: W / ↑ jump · A D / ← → lean · S / ↓ <span id="g-action"></span>.</p>
+                </div>
+                <div id="ol-lobby" class="hide">
+                    <span class="mini-label" style="text-align: center;">Room code</span>
+                    <div class="room-code" id="ol-room-code">----</div>
+                    <div class="ol-players" id="ol-players"></div>
+                    <div id="ol-host-settings">
+                        <div class="setting"><label>Mode</label><div class="chips tight" id="ol-mode-chips" style="flex-wrap: wrap;"></div></div>
+                        <div class="row2">
+                            <div class="setting" id="ol-length-setting"><label id="ol-length-label">First to</label><div class="chips tight" id="ol-length-chips"></div></div>
+                            <div class="setting" id="ol-field-setting" style="flex: none;"><label>Field</label><div class="chips tight" id="ol-field-chips"></div></div>
+                            <div class="setting" style="flex: none;"><label>Teams</label><div class="chips tight" id="ol-teams-chips"></div></div>
+                        </div>
+                    </div>
+                    <p class="ol-note" id="ol-summary" style="margin-top: 6px; text-align: center;"></p>
+                </div>
+                <p class="ol-status" id="ol-status"></p>
+            </div>
+            <div class="btn-row" style="margin-top: 14px;">
+                <button id="ol-start" class="big-btn hide"></button>
+                <button id="ol-back" class="big-btn ghost">Back</button>
+            </div>
+        </div>
+
+        <!-- Match end -->
+        <div id="celebration-screen" class="overlay hidden">
+            <div class="ft-label" id="g-over"></div>
+            <h2 id="winner-text">Player 1 Wins!</h2>
+            <div id="final-score"></div>
+            <div id="match-summary"></div>
+            <p id="ol-wait" class="ol-status hide" style="margin: -0.8rem 0 1rem;">Waiting for the host to start a rematch…</p>
+            <div class="btn-row">
+                <button id="rematch-btn" class="big-btn">Rematch</button>
+                <button id="menu-btn" class="big-btn ghost">Main Menu</button>
+            </div>
+        </div>
+
+        <!-- HUD -->
+        <div id="hud">
+            <div class="score-board">
+                <span class="tag" id="p1-tag">P1</span>
+                <span id="p1-score" class="score-text">0</span>
+                <span class="score-divider">:</span>
+                <span id="p2-score" class="score-text">0</span>
+                <span class="tag" id="p2-tag">P2</span>
+            </div>
+            <div id="match-info">FIRST TO 5</div>
+        </div>
+        <button id="mute-btn" class="icon-btn" title="Mute (M)">🔊</button>
+        <button id="pause-btn" class="icon-btn" title="Pause (P)">❚❚</button>
+
+        <div id="touch-controls" class="off">
+            <div class="tc-cluster left" id="tc-left"></div>
+            <div class="tc-cluster right" id="tc-right"></div>
+        </div>
+
+        <!-- Cosmetic browser: opens when a picker's name is clicked -->
+        <div id="cos-screen" class="overlay hidden">
+            <div class="cos-head">
+                <h2 id="cos-title">Hats</h2>
+                <span class="cos-count" id="cos-count"></span>
+                <input id="cos-search" placeholder="Search by name, tag or rarity" spellcheck="false" autocomplete="off">
+                <button class="arrow" id="cos-close" title="Close (Esc)">✕</button>
+            </div>
+            <div id="cos-grid"></div>
+        </div>
+
+        <canvas id="gameCanvas" width="1024" height="576"></canvas>
+    </div>
+
+    <!-- COSMETIC PACKS: list of files lives in shared/cosmetics/load.js -->
+    <script src="shared/cosmetics/load.js"></script>
+    <!-- /COSMETIC PACKS -->
+    <script src="shared/account.js"></script>
+    <script src="games/index.js"></script>
+    <script>
+    // The one game page: ?game=<id> picks the rules file games/<id>.js (a game listed in games/index.js).
+    // The game file goes first (it registers itself), then the shared engine. document.write keeps load order and works from file://.
+    (function () {
+        var id = new URLSearchParams(location.search).get('game');
+        if (!Games.list.some(function (g) { return g.id === id; })) {
+            document.body.textContent = 'Unknown game: ' + id + '. Pick one from the hub.';
+            return;
+        }
+        ['games/' + id, 'shared/modes', 'shared/core', 'shared/render', 'shared/net', 'shared/main'].forEach(function (f) {
+            document.write('<script src="' + f + '.js"><\/script>');
+        });
+    })();
+    </script>
+</body>
+</html>
+
