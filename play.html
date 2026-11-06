@@ -410,22 +410,14 @@
         <div id="online-screen" class="overlay hidden">
             <h1 class="game-title" style="font-size: 2.2rem; margin-bottom: 0.8rem;">Play <span>Online</span></h1>
             <div class="card online-card">
-                <div id="ol-setup" class="hide">
-                    <span class="mini-label">Supabase project URL</span>
-                    <input id="ol-url" placeholder="https://your-project.supabase.co" spellcheck="false" autocomplete="off">
-                    <span class="mini-label" style="margin-top: 8px;">Supabase anon (public) key</span>
-                    <input id="ol-key" placeholder="eyJhbGciOi…" spellcheck="false" autocomplete="off">
-                    <p class="ol-note" style="margin-top: 6px;">Both are in Supabase under Project Settings → API. They are saved in this browser only.</p>
-                </div>
                 <div id="ol-home">
-                    <span class="mini-label">Your name</span>
-                    <input id="ol-name" maxlength="12" placeholder="Player" spellcheck="false" autocomplete="off">
+                    <p class="ol-note">Playing as <b id="ol-name"></b>. Your name is set in the <a href="index.html" style="color: inherit;">Hub</a>.</p>
                     <div class="ol-row" style="margin-top: 12px;">
                         <button id="ol-create" class="mid-btn">Create room</button>
                         <div><input id="ol-code" maxlength="4" placeholder="CODE" spellcheck="false" autocomplete="off"></div>
                         <button id="ol-join" class="mid-btn ghost">Join</button>
                     </div>
-                    <p class="ol-note" style="margin-top: 8px;">Your skin and hat come from the Player 1 card. The host picks the mode. Controls: W / ↑ jump · A D / ← → lean · S / ↓ <span id="g-action"></span>.</p>
+                    <p class="ol-note" style="margin-top: 8px;">Your look is the Player 1 card (the same look in every game). The host picks the mode. Controls: W / ↑ jump · A D / ← → lean · S / ↓ <span id="g-action"></span>.</p>
                 </div>
                 <div id="ol-lobby" class="hide">
                     <span class="mini-label" style="text-align: center;">Room code</span>
@@ -498,6 +490,7 @@
     <!-- COSMETIC PACKS: list of files lives in shared/cosmetics/load.js -->
     <script src="shared/cosmetics/load.js"></script>
     <!-- /COSMETIC PACKS -->
+    <script src="shared/account.js"></script>
     <script src="games/index.js"></script>
     <script>
     // The one game page: ?game=<id> picks the rules file games/<id>.js (a game listed in games/index.js).

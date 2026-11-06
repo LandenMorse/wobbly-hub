@@ -51,13 +51,17 @@ refreshMenu();
 setScoreUI(0);
 updateInfo();
 
-// Opened from the hub: use its name and look (kept out of localStorage) and go straight into a room.
+// Opened from the hub: go straight into a room. Name and look come from the account (shared/account.js).
+// A ranked match (?match=<id>) is hosted by the match's host in the room matchmaking already made.
 const hub = HubLink.params;
 if (hub) {
-    netStore.name = hub.name;
-    settings.p1Skin = Cosmetics.resolve('skin', hub.skin); settings.p1Hat = Cosmetics.resolve('hat', hub.hat);
-    settings.p1Boots = Cosmetics.resolve('boots', hub.boots); settings.p1Acc = Cosmetics.resolve('acc', hub.acc);
     HubLink.watch(() => ({ active: net.active, host: net.isHost, code: net.code, players: Object.keys(net.roster).length, seated: Object.keys(net.seats).length, max: settings.teams === 2 ? 4 : 2, inMatch: net.inMatch }));
-    if (hub.join || hub.create) { openOnline(); hub.join ? netOpen(hub.join, false) : netOpen(randomCode(), true); }
+    if (hub.join || hub.create) (async () => {
+        openOnline();
+        await Account.ready;
+        const m = hub.match ? await Account.getMatch(hub.match).catch(() => null) : null;
+        if (hub.match && !(m && m.room_code === hub.join && m.game === G.id && m.players.some(p => p.id === Account.id))) { olStatus('This match is not available.', true); return; }
+        hub.join ? netOpen(hub.join, !!m && m.host_id === Account.id, m) : netOpen(randomCode(), true);
+    })();
 }
 requestAnimationFrame(frame);

@@ -360,7 +360,6 @@ Games.define({
     overLabel: 'FULL TIME',
     hint: 'hold S / ↓ to charge a dig',
     storageKey: 'wobblySoccer.settings.v2',      // keep: players' saved settings and online name live here
-    netStorageKey: 'wobblySoccer.online.v1',
     defaults: { target: 5, ball: 'classic', arena: 'night' },
     targets: [3, 5, 7],
     config: { goalWidth: 90, goalHeight: 180 },

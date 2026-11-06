@@ -94,6 +94,13 @@
         }
         #name-input:focus { border-color: var(--gold); }
 
+        .hide { display: none !important; }
+        #acct { margin-top: 4px; font-size: 0.72rem; color: #a4b0be; line-height: 1.35; }
+        #acct .row { display: flex; gap: 6px; margin-top: 4px; }
+        #email-input { flex: 1; min-width: 0; padding: 5px 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 0.78rem; outline: none; user-select: text; -webkit-user-select: text; }
+        #acct button { padding: 5px 9px; border-radius: 8px; background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 0.72rem; font-weight: 700; }
+        #acct button:hover { background: rgba(255, 255, 255, 0.24); }
+        #acct-msg { color: var(--gold); min-height: 1em; }
         .picker { display: flex; align-items: center; gap: 6px; width: 100%; }
         .pick-kind { font-size: 0.68rem; color: #8a98a5; text-transform: uppercase; letter-spacing: 1px; width: 50px; }
         .pick-label { flex: 1; text-align: center; color: #fff; font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -131,6 +138,10 @@
         #online-pill { top: 18px; left: 18px; padding: 6px 14px; font-size: 0.82rem; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
         #online-dot { width: 9px; height: 9px; border-radius: 50%; background: #6c7a86; }
         #online-dot.on { background: #2ecc71; box-shadow: 0 0 8px #2ecc71; }
+        #rating-pill { top: 54px; left: 18px; padding: 4px 12px; font-size: 0.74rem; color: #a4b0be; }
+        #queue-pill { top: 18px; left: 50%; transform: translateX(-50%); padding: 5px 6px 5px 14px; font-size: 0.82rem; display: none; align-items: center; gap: 10px; pointer-events: auto; }
+        #queue-pill.on { display: flex; }
+        #queue-pill button { padding: 4px 12px; border-radius: 50px; background: var(--neon-red); color: #fff; font-weight: 800; font-size: 0.74rem; }
         #controls-pill { bottom: 14px; left: 50%; transform: translateX(-50%); padding: 5px 14px; font-size: 0.74rem; color: #a4b0be; white-space: nowrap; }
         #controls-pill b {
             display: inline-block; background: #fff; color: #000; border-radius: 4px;
@@ -210,6 +221,11 @@
                     <div class="picker" data-key="hat"><span class="pick-kind">Hat</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
                     <div class="picker" data-key="boots"><span class="pick-kind">Boots</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
                     <div class="picker" data-key="acc"><span class="pick-kind">Acc</span><button class="arrow" data-dir="-1">◀</button><span class="pick-label"></span><button class="arrow" data-dir="1">▶</button></div>
+                    <div id="acct">
+                        <div id="acct-line"></div>
+                        <div class="row"><input id="email-input" type="email" placeholder="email" spellcheck="false" autocomplete="email"><button id="save-acct">Save account</button><button id="signin-acct">Sign in</button></div>
+                        <div id="acct-msg"></div>
+                    </div>
                 </div>
             </div>
             <button id="enter-btn" class="big-btn">Enter Hub</button>
@@ -218,6 +234,8 @@
 
         <!-- HUD -->
         <div id="online-pill" class="pill"><span id="online-dot"></span><span id="online-text">Offline</span></div>
+        <div id="rating-pill" class="pill"></div>
+        <div id="queue-pill" class="pill"><span id="queue-text"></span><button id="queue-cancel">Cancel</button></div>
         <div id="controls-pill" class="pill"><b>A</b> <b>D</b> walk · hold <b>W</b> jump · hold <b>S</b> in an area to play</div>
         <button id="look-btn" class="icon-btn" title="Change your look">👕</button>
         <button id="mute-btn" class="icon-btn" title="Mute (M)">🔊</button>
@@ -239,6 +257,7 @@
     <!-- COSMETIC PACKS: list of files lives in shared/cosmetics/load.js -->
     <script src="shared/cosmetics/load.js"></script>
     <!-- /COSMETIC PACKS -->
+    <script src="shared/account.js"></script>
     <script src="games/index.js"></script>
 
 
@@ -279,34 +298,26 @@
         const AREAS = Games.list.map(g => ({ ...g, title: ['WOBBLY', g.name.toUpperCase()], ...AREA_LAYOUT[g.id] }));
         const SPAWN_X = 1200;
 
-        // Online (same Supabase project as the games; see supabase/migrations/*_hub_realtime.sql)
-        const SUPABASE_URL = 'https://arqtzivzpmouvkbavzzr.supabase.co';       // e.g. 'https://abcd1234.supabase.co'
-        const SUPABASE_ANON_KEY = 'sb_publishable_qRc5U079YTHeIEmd7ZbchQ_1QKpbki5';  // Supabase → Project Settings → API → anon public key
-        const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
-        const SUPABASE_JS_SRI = 'sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o';  // pinned: a tampered CDN file will not run
+        // Online: the Supabase project and the sign-in live in shared/account.js (hub tables: supabase/migrations/*_hub_realtime.sql)
         const LOCAL_TEST = /[?&]nettest\b/.test(location.search);
         const HUB_WORLD = (() => { try { const w = new URLSearchParams(location.search).get('world'); return w && /^[a-z0-9-]{1,16}$/.test(w) ? w : 'main'; } catch (e) { return 'main'; } })();
 
         // =====================================================================
         //  SETTINGS (persisted): name and look
         // =====================================================================
+        // The hub keeps its colour and mute here; the name and the look belong to the account (shared/account.js).
         const STORAGE_KEY = 'wobblyHub.settings.v1';
         const cleanName = (s) => String(s || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 12);
-        const look = { name: '', team: 1, skin: undefined, hat: undefined, boots: undefined, acc: undefined, muted: false };
-        (() => {
-            const read = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
-            const hub = read(STORAGE_KEY), soccer = read('wobblySoccer.settings.v2'), online = read('wobblySoccer.online.v1');
-            if (hub && typeof hub === 'object') Object.assign(look, hub);
-            else if (soccer && typeof soccer === 'object') {   // first visit: start from your Wobbly Soccer look
-                look.skin = soccer.p1Skin; look.hat = soccer.p1Hat; look.boots = soccer.p1Boots; look.acc = soccer.p1Acc; look.muted = !!soccer.muted;
-            }
-            if (!look.name && online && online.name) look.name = online.name;
-        })();
-        look.name = cleanName(look.name);
+        const look = { name: '', team: 1, muted: false, skin: undefined, hat: undefined, boots: undefined, acc: undefined };
+        try { Object.assign(look, JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')); } catch (e) { /* storage unavailable */ }
         look.team = look.team === 2 ? 2 : 1;
-        for (const c of ['skin', 'hat', 'boots', 'acc']) look[c] = Cosmetics.resolve(c, look[c]);
         look.muted = !!look.muted;
-        function saveLook() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(look)); } catch (e) { /* ignore */ } }
+        const pullLook = () => { look.name = Account.name(); Object.assign(look, Account.look()); };
+        pullLook();
+        function saveLook() {
+            Account.setLook(look);
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ team: look.team, muted: look.muted })); } catch (e) { /* ignore */ }
+        }
 
         // =====================================================================
         //  SOUND (WebAudio synth, no assets)
@@ -423,7 +434,7 @@
                 if (p.hold === 0) Sound.tone(440, 0.08, 'triangle', 0.05);
                 p.hold++;
                 if (p.hold % 14 === 0) emit(p.x + (Math.random() - 0.5) * 50, GROUND_Y - 2, 2, { color: [area.accent, '#ffffff'], speed: 1.4, angle: -Math.PI / 2, spread: 0.6, life: 26, size: 2.5, gravity: -0.03 });
-                if (p.hold >= HOLD_FRAMES) { p.hold = 0; input.hold = false; joinArea(area); }
+                if (p.hold >= HOLD_FRAMES) { p.hold = 0; input.hold = false; const pad = padAt(area, p.x); pad ? joinQueue(area, pad) : joinArea(area); }
             } else p.hold = 0;
         }
 
@@ -445,6 +456,9 @@
         }
 
         const areaAt = (x) => AREAS.find(a => x >= a.x0 && x <= a.x1) || null;
+        // Ranked pads in every area (hold on one to queue for a matchmade game): size = players, dx = distance from the area's middle
+        const PADS = [{ size: 2, label: '1v1', dx: -150 }, { size: 4, label: '2v2', dx: 150 }];
+        const padAt = (a, x) => PADS.find(q => Math.abs(x - (a.x0 + a.x1) / 2 - q.dx) < 50) || null;
 
         // =====================================================================
         //  EFFECTS
@@ -492,23 +506,6 @@
         const net = { id: '', client: null, lobby: null, mine: null, mineReady: false, online: false, subs: new Map(), lastPosKey: '', posTick: 0, metaTick: 0, connecting: false };
         const peers = new Map();   // id -> { name, team, cos, st, x, y, vx, vy, angle, charge, hold, face, rx, ry, ra, at, seen }
         let myRoom = null;         // the room we're in, as reported by the game: { g, code, host, n, seated, max, inMatch, active }
-
-        function randomId() {
-            try { const a = new Uint32Array(3); crypto.getRandomValues(a); return Array.from(a, v => v.toString(36)).join('').slice(0, 14); }
-            catch (e) { return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 8); }
-        }
-        function loadSupabase() {
-            if (window.supabase && window.supabase.createClient) return Promise.resolve();
-            return new Promise((res, rej) => {
-                const s = document.createElement('script');
-                s.src = SUPABASE_JS;
-                s.integrity = SUPABASE_JS_SRI;
-                s.crossOrigin = 'anonymous';
-                s.onload = res;
-                s.onerror = () => rej(new Error('Could not load the Supabase library. Check your internet connection.'));
-                document.head.appendChild(s);
-            });
-        }
 
         // Same-browser stand-in for a Supabase channel (used with ?nettest): one BroadcastChannel per topic
         class LocalChannel {
@@ -570,19 +567,10 @@
             net.connecting = true;
             setOnline(false, 'Connecting…');
             try {
-                if (LOCAL_TEST) net.id = randomId();
-                else {
-                    await loadSupabase();
-                    net.client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { realtime: { params: { eventsPerSecond: 30 } } });
-                    let { data: { session } } = await net.client.auth.getSession();
-                    if (!session) {
-                        const r = await net.client.auth.signInAnonymously();
-                        if (r.error || !r.data || !r.data.session) throw new Error('Could not sign in, so you are offline. You can still walk around and join games.');
-                        session = r.data.session;
-                    }
-                    net.id = session.user.id;
-                    try { net.client.realtime.setAuth(session.access_token); } catch (e) { /* refreshed by the client */ }
-                }
+                await Account.ready;
+                if (!Account.id) throw new Error((Account.error || 'Could not sign in, so you are offline.') + ' You can still walk around and join games.');
+                net.client = Account.client;
+                net.id = Account.id;
             } catch (err) {
                 net.connecting = false;
                 setOnline(false, 'Offline');
@@ -703,16 +691,20 @@
         //  JOINING A GAME: hold in an area -> the game opens on top of the hub
         // =====================================================================
         let playing = null;   // the area whose game is open
-        function joinArea(area) {
-            // Join a room someone in the hub is hosting in its lobby; otherwise start one for the next people
-            const room = roomsFor(area.id).find(r => !r.inMatch);
-            const q = new URLSearchParams({ game: area.id, hub: '1', name: look.name || 'Player', skin: look.skin, hat: look.hat, boots: look.boots, acc: look.acc });
-            if (room) q.set('join', room.code); else q.set('create', '1');
+        let ranked = false;   // the open game is a ranked match: its room is not advertised to the hub
+        function joinArea(area, match) {
+            if (queue) cancelQueue();
+            // Join a room someone in the hub is hosting in its lobby; otherwise start one for the next people. A ranked match has its room already.
+            const room = match ? null : roomsFor(area.id).find(r => !r.inMatch);
+            const q = new URLSearchParams({ game: area.id, hub: '1' });
+            if (match) { q.set('join', match.room_code); q.set('match', match.id); }
+            else if (room) q.set('join', room.code); else q.set('create', '1');
             if (LOCAL_TEST) q.set('nettest', '1');
             Sound.portal();
             emit(me.x, me.y, 40, { color: [area.accent, '#ffffff', '#f1c40f'], speed: 6, life: 40, size: 4, gravity: 0.05, drag: 0.94 });
             playing = area;
-            myRoom = { g: area.id, active: false, host: !room, code: room ? room.code : '', n: 0, seated: 0, max: 2, inMatch: false };
+            ranked = !!match;
+            myRoom = { g: area.id, active: false, host: !room && !match, code: room ? room.code : '', n: 0, seated: 0, max: 2, inMatch: false };
             sendMeta();
             input.left = input.right = input.hold = false;
             me.charging = false; me.charge = 0; me.hold = 0;
@@ -723,10 +715,47 @@
                 playFrame.focus();
             }, 350);
         }
+
+        // =====================================================================
+        //  RANKED QUEUE: hold on a 1v1 / 2v2 pad -> matchmaking -> everyone opens the match's room
+        // =====================================================================
+        let queue = null;   // { area, pad, at } while we wait for a match
+        function showQueue() {
+            $('queue-pill').classList.toggle('on', !!queue);
+            if (queue) $('queue-text').textContent = `Searching ${queue.pad.label} ${queue.area.name} · ${Math.floor((Date.now() - queue.at) / 1000)}s`;
+        }
+        setInterval(showQueue, 1000);
+        function cancelQueue() {
+            queue = null;
+            Account.watchMatches(null);
+            Account.leaveQueue().catch(() => {});
+            showQueue();
+        }
+        function onMatch(m) {
+            if (!queue || !m || m.game !== queue.area.id || !Array.isArray(m.players) || !m.players.some(p => p.id === Account.id)) return;
+            const area = queue.area;
+            queue = null;
+            Account.watchMatches(null);
+            showQueue();
+            toast('Match found!');
+            joinArea(area, m);
+        }
+        async function joinQueue(area, pad) {
+            if (queue) return;
+            await Account.ready;
+            if (!Account.id || !(Account.LOCAL || Account.hasProfile())) { toast('Ranked games need an account. Check your connection and name.', true); return; }
+            queue = { area, pad, at: Date.now() };
+            showQueue();
+            Account.watchMatches(onMatch);
+            try { onMatch(await Account.joinQueue(area.id, pad.size)); }   // the match can come back right here (we were the last to join) or through Realtime
+            catch (e) { queue = null; Account.watchMatches(null); showQueue(); toast(e.message || 'Could not join the queue', true); }
+        }
+        $('queue-cancel').addEventListener('click', (e) => { cancelQueue(); e.currentTarget.blur(); });
         function closeGame(msg, err) {
             if (!playing) return;
             playing = null;
             myRoom = null;
+            if (ranked) { ranked = false; setTimeout(() => Account.refresh().then(showAccount), 1500); }   // the host has reported the result by now
             playWrap.classList.remove('on');
             playFrame.src = 'about:blank';
             sendMeta();
@@ -739,7 +768,7 @@
             const m = e.data;
             if (!m || typeof m !== 'object' || m.wobbly !== 1) return;
             if (m.type === 'room') {
-                const next = { g: playing.id, active: !!m.active, host: !!m.host, code: /^[A-Z]{4}$/.test(m.code) ? m.code : '', n: num(m.players, 0, 99) | 0, seated: num(m.seated, 0, 4) | 0, max: num(m.max, 2, 4, 2) | 0, inMatch: !!m.inMatch };
+                const next = { g: playing.id, active: !!m.active, host: !!m.host && !ranked, code: /^[A-Z]{4}$/.test(m.code) ? m.code : '', n: num(m.players, 0, 99) | 0, seated: num(m.seated, 0, 4) | 0, max: num(m.max, 2, 4, 2) | 0, inMatch: !!m.inMatch };
                 const changed = JSON.stringify(next) !== JSON.stringify(myRoom);
                 myRoom = next;
                 if (changed) sendMeta();
@@ -755,7 +784,7 @@
         const keys = {};
         const isTyping = (e) => e.target && e.target.tagName === 'INPUT';
         window.addEventListener('keydown', (e) => {
-            if (isTyping(e)) { if (e.key === 'Enter') enterHub(); return; }
+            if (isTyping(e)) { if (e.key === 'Enter' && e.target.id === 'name-input') enterHub(); return; }
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
             keys[e.code] = true;
             if (!e.repeat) {
@@ -1026,6 +1055,12 @@
             ctx.fillStyle = grd; ctx.fillRect(a.x0, GROUND_Y - 70, a.x1 - a.x0, 70);
             ctx.fillStyle = hexA(a.accent, inside ? 0.9 : 0.45);
             ctx.fillRect(a.x0, GROUND_Y - 2, 4, -26); ctx.fillRect(a.x1 - 4, GROUND_Y - 2, 4, -26);
+            for (const q of PADS) {   // ranked pads
+                const x = mid + q.dx, on = inside && padAt(a, me.x) === q;
+                ctx.fillStyle = hexA(a.accent, on ? 0.9 : 0.5); ctx.fillRect(x - 50, GROUND_Y - 5, 100, 5);
+                ctx.font = '800 12px Segoe UI, Roboto, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillStyle = on ? '#ffffff' : 'rgba(255,255,255,0.65)'; ctx.fillText(`${q.label} RANKED`, x, GROUND_Y - 17);
+            }
             // Live info
             const rooms = roomsFor(a.id), n = playingIn(a.id);
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -1037,7 +1072,8 @@
             ctx.fillStyle = lobby.length ? '#f1c40f' : '#8a98a5'; ctx.font = '700 12px Segoe UI, Roboto, sans-serif';
             ctx.fillText(line2, mid, 120 + 79);
             if (inside && !playing) {
-                const label = isTouch ? 'Hold PLAY to join' : 'Hold S / ↓ to join';
+                const pad = padAt(a, me.x), what = pad ? `ranked ${pad.label}` : 'to join';
+                const label = isTouch ? `Hold PLAY ${pad ? 'for ' : ''}${what}` : `Hold S / ↓ ${pad ? 'for ' : ''}${what}`;
                 ctx.font = '900 18px Segoe UI, Roboto, sans-serif';
                 ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,0.6)';
                 const y = 252 + Math.sin(t * 0.006) * 3;
@@ -1148,13 +1184,45 @@
                 a.blur();
             }));
         });
-        let entered = false;
-        function enterHub() {
-            if (entryScreen.classList.contains('hidden')) return;
+        // The account panel and the ratings (Elo, wins and losses per game)
+        const $msg = (t) => { $('acct-msg').textContent = t || ''; };
+        function showAccount() {
+            const r = Games.list.map(g => { const x = Account.ratings[g.id]; return x ? `${g.name} ${x.elo} · ${x.wins}W ${x.losses}L` : `${g.name} unranked`; }).join('  |  ');
+            $('rating-pill').textContent = r;
+            $('acct-line').textContent = (Account.LOCAL ? 'Test mode: local account only' : !Account.id ? 'Offline: no account' : Account.email ? `Account: ${Account.email}` : 'Guest account on this device') + ' · ' + r;
+            $('save-acct').classList.toggle('hide', !Account.client || !!Account.email);
+            $('signin-acct').classList.toggle('hide', !Account.client);
+            $('email-input').classList.toggle('hide', !Account.client);
+        }
+        const emailAction = (btn, fn, done) => btn.addEventListener('click', async () => {
+            const email = $('email-input').value.trim();
+            if (!/^\S+@\S+\.\S+$/.test(email)) { $msg('Enter your email address'); return; }
+            $msg('Sending…');
+            const err = await fn(email);
+            $msg(err ? (err.message || 'Could not send the email') : done);
+        });
+        emailAction($('save-acct'), Account.saveEmail, 'Check your email to confirm. Then you can sign in on other devices.');
+        emailAction($('signin-acct'), Account.signInEmail, 'Check your email for the sign-in link.');
+        Account.ready.then(() => {
+            if ($('name-input').value === look.name) { pullLook(); $('name-input').value = look.name; } else pullLook();
+            refreshEntry(); showAccount();
+        });
+
+        let entered = false, entering = false;
+        async function enterHub() {
+            if (entryScreen.classList.contains('hidden') || entering) return;
+            entering = true;
             Sound.init(); Sound.click();
-            look.name = cleanName($('name-input').value) || look.name || 'Player';
+            $msg('Saving…');
+            await Account.ready;
+            const r = await Account.saveName(cleanName($('name-input').value) || look.name || 'Player');
+            entering = false;
+            if (r.error) { $msg(r.error); return; }
+            $msg('');
+            look.name = Account.name();
             $('name-input').value = look.name;
             saveLook();
+            showAccount();
             entryScreen.classList.add('hidden');
             $('name-input').blur();
             if (!entered) { entered = true; connect(); toast(`Welcome, ${look.name}!`); }
@@ -1189,7 +1257,7 @@
         }
         window.addEventListener('resize', fit);
         window.addEventListener('orientationchange', fit);
-        window.addEventListener('pagehide', () => { dropChan(net.lobby); dropChan(net.mine); for (const c of net.subs.values()) dropChan(c); });
+        window.addEventListener('pagehide', () => { if (queue) Account.leaveQueue().catch(() => {}); dropChan(net.lobby); dropChan(net.mine); for (const c of net.subs.values()) dropChan(c); });
 
         // =====================================================================
         //  MAIN LOOP — fixed timestep
@@ -1223,6 +1291,7 @@
         }
 
         $('name-input').value = look.name;
+        showAccount();
         camX = Math.max(0, Math.min(WORLD_W - W, me.x - W / 2));
         fit();
         buildBackground();

@@ -8,11 +8,6 @@
 //  tables are needed: a room lives entirely in one Realtime channel.
 //  Add ?nettest to the URL to test rooms between tabs without Supabase.
 // =====================================================================
-const SUPABASE_URL = 'https://arqtzivzpmouvkbavzzr.supabase.co';       // e.g. 'https://abcd1234.supabase.co'
-const SUPABASE_ANON_KEY = 'sb_publishable_qRc5U079YTHeIEmd7ZbchQ_1QKpbki5';  // Supabase → Project Settings → API → anon public key
-const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
-const SUPABASE_JS_SRI = 'sha384-0w2KAL2YHP6wKOkUDzkCDGgVvfmHnj02DHeQ6XcHOgTfFsGyonKOpShMH1x6nk9o';  // pinned: a tampered CDN file will not run
-const NET_STORE = G.netStorageKey;
 const SNAP_EVERY = 3;    // host sends a snapshot every 3 ticks (20 per second)
 const INTERP_TICKS = 6;  // guests draw ~100 ms behind the host to hide network jitter
 const NET_PREDICT = !/[?&]nopredict\b/.test(location.search);  // guest draws their own player ahead of the snapshots (visual only)
@@ -30,12 +25,6 @@ const myActor = () => net.mySeat ? seatActor(net.mySeat) : null;
 const isGuest = () => net.active && !net.isHost;
 function r2(v) { return Math.round(v * 100) / 100; }
 
-const netStore = (() => { try { return JSON.parse(localStorage.getItem(NET_STORE) || '{}') || {}; } catch (e) { return {}; } })();
-function saveNetStore() { if (HubLink.params) return; try { localStorage.setItem(NET_STORE, JSON.stringify(netStore)); } catch (e) { /* ignore */ } }
-const netUrl = () => SUPABASE_URL || netStore.url || '';
-const netKey = () => SUPABASE_ANON_KEY || netStore.key || '';
-const needsConfig = () => !LOCAL_TEST && !(SUPABASE_URL && SUPABASE_ANON_KEY);
-
 // Record the host's sounds so guests hear the same match
 for (const name of FX_SOUNDS) {
     const orig = Sound[name];
@@ -48,19 +37,6 @@ for (const name of FX_SOUNDS) {
 function netUpdateRec() { net.rec = net.active && net.isHost && net.inMatch; }
 
 // ---------- Transport ----------
-function loadSupabase() {
-    if (window.supabase && window.supabase.createClient) return Promise.resolve();
-    return new Promise((res, rej) => {
-        const s = document.createElement('script');
-        s.src = SUPABASE_JS;
-        s.integrity = SUPABASE_JS_SRI;
-        s.crossOrigin = 'anonymous';
-        s.onload = res;
-        s.onerror = () => rej(new Error('Could not load the Supabase library. Check your internet connection.'));
-        document.head.appendChild(s);
-    });
-}
-
 // Same-browser stand-in for a Supabase channel (used with ?nettest)
 class LocalChannel {
     constructor(topic) {
@@ -99,25 +75,12 @@ class LocalChannel {
     }
 }
 
-// Signs in (anonymously) so every message carries a verified user id, and creates the client.
-// Needs supabase/migrations applied and Anonymous sign-ins switched on (see supabase/README.md).
+// The account (shared/account.js) owns the Supabase client and the sign-in; this takes its id and client.
 async function netAuth() {
-    if (LOCAL_TEST) return;
-    await loadSupabase();
-    const cfg = netUrl() + '|' + netKey();
-    if (!net.client || net.clientCfg !== cfg) {
-        net.client = window.supabase.createClient(netUrl(), netKey(), { realtime: { params: { eventsPerSecond: 60 } } });
-        net.clientCfg = cfg;
-    }
-    let { data: { session } } = await net.client.auth.getSession();
-    if (!session) {
-        const r = await net.client.auth.signInAnonymously();
-        if (r.error && (r.error.status === 429 || r.error.code === 'over_request_rate_limit')) throw new Error('Too many sign-in attempts right now. Wait a minute and try again.');
-        if (r.error || !r.data || !r.data.session) throw new Error('Could not sign in. In Supabase, turn on Authentication → Sign In / Providers → Allow anonymous sign-ins.');
-        session = r.data.session;
-    }
-    net.id = session.user.id;
-    try { net.client.realtime.setAuth(session.access_token); } catch (e) { /* the client keeps the token fresh itself */ }
+    await Account.ready;
+    if (!Account.id) throw new Error(Account.error || 'Could not sign in.');
+    net.client = Account.client;
+    net.id = Account.id;
 }
 // ws:<CODE>:host = the room (only the host may broadcast), ws:<CODE>:g:<uid> = one guest's line to the host
 function netChan(topic) {
@@ -166,28 +129,18 @@ function randomCode() {
     return s;
 }
 
-function readOnlineForm() {
-    if (needsConfig()) {
-        netStore.url = $('ol-url').value.trim().replace(/\/+$/, '');
-        netStore.key = $('ol-key').value.trim();
-    }
-    netStore.name = ($('ol-name').value.trim() || 'Player').slice(0, 12);
-    saveNetStore();
-    if (needsConfig() && (!/^https:\/\/\S+$/.test(netUrl()) || !netKey())) {
-        olStatus('Add your Supabase project URL (https://…) and anon key first.', true);
-        return false;
-    }
-    return true;
-}
-
-async function netOpen(code, asHost) {
-    if (net.active || !readOnlineForm()) return;
+// match: the ranked match this room belongs to (its rooms row already exists), else null
+async function netOpen(code, asHost, match) {
+    if (net.active) return;
     olStatus(asHost ? 'Creating room…' : `Joining room ${code}…`);
     setOlBusy(true);
     let ch, hostId = '';
     try {
         await netAuth();
-        if (asHost) {
+        if (asHost && match) {
+            if (!LOCAL_TEST && await netRoomHost(code) !== net.id) throw new Error('This match room is not yours to host.');
+            hostId = net.id;
+        } else if (asHost) {
             let ok = false;
             for (let i = 0; i < 5 && !ok; i++) { ok = await netRoomCreate(code); if (!ok) code = randomCode(); }
             if (!ok) throw new Error('Could not find a free room code. Try again.');
@@ -200,11 +153,15 @@ async function netOpen(code, asHost) {
     } catch (err) { setOlBusy(false); olStatus(err.message || 'Could not connect.', true); return; }
     net.saved = { ...settings };
     Object.assign(net, {
-        active: true, isHost: asHost, inMatch: false, code, channel: ch,
+        active: true, isHost: asHost, inMatch: false, code, channel: ch, match: match || null, reported: false,
         hostId: asHost ? net.id : hostId, roster: {}, seats: asHost && !G.pickSeats ? { 1: net.id } : {}, wantSeq: 0,
         inputs: {}, snaps: [], mySeat: asHost && !G.pickSeats ? 1 : 0, fx: [], gch: null, gchs: {}, helloInfo: {}, pred: null
     });
     if (asHost) { settings.opponent = 'human'; settings.mates = 'human'; }
+    if (asHost && match) {   // ranked: the game's ranked mode and default length, 1v1 or 2v2 as queued, seats from the match
+        Object.assign(settings, { mode: G.ranked, target: DEFAULTS.target, time: DEFAULTS.time, field: DEFAULTS.field, teams: match.size === 4 ? 2 : 1 });
+        net.matchTimer = setTimeout(() => { if (net.active && net.match === match && !net.inMatch) netLeave('Not everyone showed up. The match was cancelled.', true); }, 30000);
+    }
     netUpdateRec();
     showOlView();
     renderLobby();
@@ -269,7 +226,7 @@ function netOpenGuestLine(code) {
 }
 
 function netHello(extra) {
-    return { game: G.id, name: netStore.name || 'Player', skin: settings.p1Skin, hat: settings.p1Hat, boots: settings.p1Boots, acc: settings.p1Acc, ...extra };
+    return { game: G.id, name: Account.name() || 'Player', ...Account.look(), ...extra };
 }
 
 // Host: listen on one guest's line. The topic carries the guest's verified id, so payloads are never trusted for identity.
@@ -302,13 +259,13 @@ function netLeave(msg, err) {
     const ch = net.channel, gch = net.gch;
     netRoomClose();
     net.channel = null; net.gch = null;
-    clearTimeout(net.joinTimer); clearInterval(net.helloTimer);
+    clearTimeout(net.joinTimer); clearInterval(net.helloTimer); clearTimeout(net.matchTimer);
     for (const uid of Object.keys(net.gchs)) netDropGuest(uid);
     for (const c of [ch, gch]) {
         if (c) try { if (net.client && !LOCAL_TEST) net.client.removeChannel(c); else c.unsubscribe(); } catch (e) { /* ignore */ }
     }
     const wasPlaying = state !== 'MENU';
-    Object.assign(net, { active: false, isHost: false, inMatch: false, code: '', hostId: '', roster: {}, seats: {}, inputs: {}, snaps: [], mySeat: 0, fx: [], gchs: {}, helloInfo: {}, pred: null });
+    Object.assign(net, { active: false, isHost: false, inMatch: false, match: null, code: '', hostId: '', roster: {}, seats: {}, inputs: {}, snaps: [], mySeat: 0, fx: [], gchs: {}, helloInfo: {}, pred: null });
     netUpdateRec();
     if (net.saved) { Object.assign(settings, net.saved); net.saved = null; }
     for (const p of [p1, p2, p3, p4]) p.cos = null;
@@ -357,7 +314,7 @@ function netHostSync() {
         if (h) { const { wq, ...pub } = h; roster[id] = pub; }
     }
     for (const id of Object.keys(net.gchs)) if (!ps[id]) netDropGuest(id);
-    if (!roster[net.id]) roster[net.id] = { name: netStore.name || 'Player', skin: settings.p1Skin, hat: settings.p1Hat, boots: settings.p1Boots, acc: settings.p1Acc, t: 0 };
+    if (!roster[net.id]) roster[net.id] = { name: Account.name() || 'Player', ...Account.look(), t: 0 };
     net.roster = roster;
     const max = settings.teams === 2 ? 4 : 2;
     for (const s of [1, 2, 3, 4]) {
@@ -373,16 +330,32 @@ function netHostSync() {
         const waiting = Object.keys(roster).filter(id => !seated.has(id)).sort((a, b) => roster[a].t - roster[b].t);
         for (let s = 2; s <= max && waiting.length; s++) if (!net.seats[s]) net.seats[s] = waiting.shift();
     }
+    if (net.match && !net.inMatch) {   // ranked: Blue (team 1) takes seats 1 and 3, Red (team 2) seats 2 and 4, as the match says
+        net.seats = {};
+        const used = [0, 0, 0];
+        for (const p of net.match.players) if (roster[p.id]) net.seats[p.team + 2 * used[p.team]++] = p.id;
+    }
+    if (net.match && net.inMatch && !net.reported) {   // everyone on the other team left: the remaining team wins
+        const mine = Object.keys(net.seats).find(s => net.seats[s] === net.id);
+        if (mine && !Object.keys(net.seats).some(s => s % 2 !== mine % 2)) { netReport(mine % 2 ? 1 : 2); netLeave('The other team left. The match counts as your win.'); return; }
+    }
     net.mySeat = 0;
     for (const s in net.seats) if (net.seats[s] === net.id) net.mySeat = +s;
     netSend('lobby', netLobbyPayload());
     if (net.inMatch) netSetTags(); else renderLobby();
+    if (net.match && !net.inMatch && net.match.players.every(p => roster[p.id])) netHostStart(true);
+}
+// Ranked, host only: tell the database who won (once)
+function netReport(team) {
+    if (!net.match || !net.isHost || net.reported) return;
+    net.reported = true;
+    Account.reportResult(net.match.id, team).then(() => Account.refresh(), (e) => console.error('Could not report the result:', e));
 }
 
 // Seat picking (G.pickSeats): players click a seat instead of being seated in order of arrival.
 // Host: put a player in a seat (0 = no seat, they watch). Only in the lobby, and only into an empty seat.
 function netSetSeat(id, s) {
-    if (!net.isHost || net.inMatch) return false;
+    if (!net.isHost || net.inMatch || net.match) return false;
     const max = settings.teams === 2 ? 4 : 2;
     s = s | 0;
     if (s < 0 || s > max || (s && net.seats[s] && net.seats[s] !== id)) return false;
@@ -393,7 +366,7 @@ function netSetSeat(id, s) {
 
 // Anyone: click an empty seat to take it, your own seat to get up. The host can also clear someone else's seat.
 function netSeatClick(s) {
-    if (!net.active || net.inMatch) return;
+    if (!net.active || net.inMatch || net.match) return;
     Sound.init(); Sound.click();
     const id = net.seats[s];
     let want;
@@ -431,6 +404,7 @@ function netHostStart(fromLobby) {
     net.inMatch = true; net.inputs = {}; net.fx = [];
     onlineScreen.classList.add('hidden');
     startMatch();
+    clearTimeout(net.matchTimer);
     netUpdateRec();
     netSend('start', netLobbyPayload());
 }
@@ -678,7 +652,6 @@ function guestTick() {
 
 // ---------- Online screen ----------
 function showOlView() {
-    $('ol-setup').classList.toggle('hide', net.active || !needsConfig());
     $('ol-home').classList.toggle('hide', net.active);
     $('ol-lobby').classList.toggle('hide', !net.active);
     $('ol-start').classList.toggle('hide', !(net.active && net.isHost));
@@ -742,8 +715,8 @@ function renderLobby() {
         box.appendChild(d);
     }
     const host = net.isHost;
-    $('ol-host-settings').classList.toggle('hide', !host);
-    if (host) {
+    $('ol-host-settings').classList.toggle('hide', !host || !!net.match);
+    if (host && !net.match) {
         const m = mode();
         const resync = () => netHostSync();
         buildChips($('ol-mode-chips'), MODE_ORDER.map(id => ({ id, name: MODES[id].name })), it => it.id === settings.mode, it => { settings.mode = it.id; resync(); });
@@ -771,9 +744,7 @@ function renderLobby() {
 function openOnline() {
     menuScreen.classList.add('hidden');
     onlineScreen.classList.remove('hidden');
-    $('ol-name').value = netStore.name || '';
-    $('ol-url').value = netStore.url || '';
-    $('ol-key').value = netStore.key || '';
+    $('ol-name').textContent = Account.name() || 'Player';
     olStatus(LOCAL_TEST ? 'Test mode: rooms only connect tabs in this browser.' : '');
     showOlView();
 }

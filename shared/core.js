@@ -122,6 +122,9 @@ if (!OPPONENTS.some(o => o.id === settings.opponent)) settings.opponent = DEFAUL
 // Ids pass through; numbers from saves made before the registry map through COS_LEGACY; anything else falls back to the default.
 for (const k in COS_KEYS) settings[k] = Cosmetics.resolve(COS_KEYS[k], settings[k]);
 settings.muted = !!settings.muted;
+// Player 1's look is the account's look (the hub edits it too); the pickers below write it back
+function syncLook() { Account.setLook({ skin: settings.p1Skin, hat: settings.p1Hat, boots: settings.p1Boots, acc: settings.p1Acc }); }
+Object.assign(settings, { p1Skin: Account.look().skin, p1Hat: Account.look().hat, p1Boots: Account.look().boots, p1Acc: Account.look().acc });
 if (!fieldDef()) settings.field = FIELDS[0].id;
 if (settings.teams !== 1 && settings.teams !== 2) settings.teams = 1;
 if (settings.mates !== 'bot' && settings.mates !== 'human') settings.mates = 'bot';
@@ -144,7 +147,7 @@ const isCPU = () => settings.opponent !== 'human';
 const net = {
     active: false, isHost: false, inMatch: false, rec: false,
     id: (() => { try { const a = new Uint32Array(3); crypto.getRandomValues(a); return Array.from(a, v => v.toString(36)).join('').slice(0, 14); } catch (e) { return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 8); } })(), code: '', hostId: '',
-    client: null, clientCfg: '', channel: null, joinTimer: 0, gch: null, gchs: {}, helloInfo: {}, helloTimer: 0, pred: null,
+    client: null, match: null, reported: false, matchTimer: 0, channel: null, joinTimer: 0, gch: null, gchs: {}, helloInfo: {}, helloTimer: 0, pred: null,
     roster: {}, seats: {}, mySeat: 0, saved: null,
     inputs: {}, local: { l: false, r: false, j: false, d: false }, touch: { j: false, d: false },
     snaps: [], renderT: -1, appliedT: -1, latestT: -1, latestAt: 0,
@@ -988,8 +991,8 @@ function showGameOver() {
     matchSummaryEl.textContent = `${mode().name} · ${fmtClock(Math.round(elapsed / 60))} played`;
     clearAllInput();
     const guest = isGuest();
-    $('rematch-btn').classList.toggle('hide', guest);
-    $('ol-wait').classList.toggle('hide', !guest);
+    $('rematch-btn').classList.toggle('hide', guest || !!net.match);   // a ranked match is played once
+    $('ol-wait').classList.toggle('hide', !guest || !!net.match);
     $('menu-btn').textContent = net.active ? (net.isHost ? 'Lobby' : 'Leave') : 'Main Menu';
     pauseScreen.classList.add('hidden');
     celebrationScreen.classList.remove('hidden');
@@ -998,6 +1001,7 @@ function showGameOver() {
 function endMatch() {
     state = 'GAMEOVER';
     const winner = scores[1] > scores[2] ? 1 : 2;
+    netReport(winner);   // ranked rooms only
     showGameOver();
     Sound.fanfare();
     for (let i = 0; i < 4; i++) {

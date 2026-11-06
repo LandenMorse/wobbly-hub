@@ -12,10 +12,11 @@ Steps: add `{ id, name, file, accent, ground }` to `games/index.js` (the hub's a
 
 | field | meaning |
 | --- | --- |
-| `id` | must be listed in `games/index.js` (`name`, `file`, `accent`, `ground` come from there) |
+| `id` | must be listed in `games/index.js` (`name`, `file`, `ranked`, `accent`, `ground` come from there) |
+| `ranked` (in `games/index.js`) | the mode id ranked matches are played in (`'classic'`). The hub gives every listed game 1v1 and 2v2 ranked pads; ranked rooms are humans only, seats come from the match, and the host reports the winning team at full time |
 | `point` | word for a score: `'goal'` (HUD, banners, chips, mode text) |
 | `subtitle`, `startLabel`, `overLabel`, `hint` | menu texts: subtitle under the title, start button, end-of-match heading, last part of the key hint line |
-| `storageKey`, `netStorageKey` | localStorage keys for settings and the online name. Never change a shipped key: saves live there |
+| `storageKey` | localStorage key for the game's settings. Never change a shipped key: saves live there. (Name and look are not here: they belong to the account, `shared/account.js`) |
 | `defaults` | settings defaults the game owns: `{ target, ball, arena }` |
 | `targets` | the "first to" choices |
 | `config` | overrides/extra fields on `CONFIG` (see the top of `core.js` for the physics defaults: `ballR`, `ballGravity`, `ballMaxSpeed`, `walkAccel`, `walkMax`, `airAccel`, `airMax`, `airGravity`, `apexBand`, `apexHang`, `jumpScale`, ...). Soccer adds `goalWidth`, `goalHeight` |

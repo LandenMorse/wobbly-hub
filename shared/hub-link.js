@@ -1,12 +1,11 @@
-// Link between a game and the Wobbly Hub that embeds it in an iframe (?hub=1&name=..&skin=..&create=1|join=CODE).
+// Link between a game and the Wobbly Hub that embeds it in an iframe (?hub=1&create=1 | join=CODE[&match=ID]).
+// Name and look come from the account (shared/account.js), not from the URL.
 // Classic script: defines window.HubLink. The URL is untrusted input, so everything is validated here.
-// Cosmetic ids are returned raw; the game validates them with Cosmetics.resolve.
 window.HubLink = (() => {
     const q = new URLSearchParams(location.search);
     const join = q.get('join') || '';
     const params = q.get('hub') !== '1' ? null : {
-        name: (q.get('name') || '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 12) || 'Player',
-        skin: q.get('skin'), hat: q.get('hat'), boots: q.get('boots'), acc: q.get('acc'),
+        match: (q.get('match') || '').replace(/[^\w-]/g, '').slice(0, 40),   // a ranked match: the room was made by matchmaking
         join: /^[A-Z]{4}$/.test(join) ? join : '',
         create: q.get('create') === '1'
     };

@@ -297,7 +297,6 @@ Games.define({
     overLabel: 'FINAL SCORE',
     hint: 'three touches per side · win by 2',
     storageKey: 'wobblyVolleyball.settings.v1',      // keep: players' saved settings and online name live here
-    netStorageKey: 'wobblyVolleyball.online.v1',
     defaults: { target: 11, ball: 'beach', arena: 'beach' },
     targets: [7, 11, 15],
     winBy: 2,

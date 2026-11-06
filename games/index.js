@@ -2,12 +2,13 @@
 //   id      ?game=<id> on play.html, and the name of the rules file games/<id>.js
 //   name    shown in the game's title and page title
 //   file    the page the hub opens (play.html reads ?game= itself, so the hub adds it)
+//   ranked  the mode id ranked (matchmade) matches are played in
 //   accent  the game's colour in the hub; ground: the hub's ground under its area ('grass' | 'sand')
 // Games.define(...) is how a rules file registers itself, see docs/GAMES.md.
 window.Games = {
     list: [
-        { id: 'soccer', name: 'Soccer', file: 'play.html', accent: '#2ecc71', ground: 'grass' },
-        { id: 'volleyball', name: 'Volleyball', file: 'play.html', accent: '#ff9f43', ground: 'sand' }
+        { id: 'soccer', name: 'Soccer', file: 'play.html', ranked: 'classic', accent: '#2ecc71', ground: 'grass' },
+        { id: 'volleyball', name: 'Volleyball', file: 'play.html', ranked: 'classic', accent: '#ff9f43', ground: 'sand' }
     ],
     current: null,
     define(def) {

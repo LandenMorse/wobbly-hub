@@ -503,6 +503,7 @@ document.querySelectorAll('.picker').forEach(pk => {
             Sound.init(); Sound.click();
             settings[key] = Cosmetics.step(COS_KEYS[key], settings[key], Number(a.dataset.dir));
             if (key === 'arena') buildBackground();
+            if (key.startsWith('p1')) syncLook();
             refreshMenu();
             a.blur();
         });
@@ -593,6 +594,7 @@ function cosPick(id) {
     Sound.init(); Sound.click();
     settings[cosKey] = id;
     if (cosKey === 'arena') buildBackground();
+    if (cosKey.startsWith('p1')) syncLook();
     cosHide();
     refreshMenu();
 }
