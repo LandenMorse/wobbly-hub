@@ -68,7 +68,7 @@ const TIMES = [60, 90, 120];
 // stable string ids. Old saves and old clients referred to them by list
 // position, so these tables freeze that original order for migration.
 // See docs/COSMETICS.md before adding items.
-if (typeof Cosmetics === 'undefined') throw new Error('cosmetics did not load (run `node tools/cosmetics.js sync` to inline them)');
+if (typeof Cosmetics === 'undefined') throw new Error('cosmetics did not load (check that shared/cosmetics/load.js is reachable)');
 const COS_LEGACY = {
     skin: ['classic', 'gold', 'galaxy', 'tiger', 'ninja', 'robot', 'slime', 'magma', 'jersey_hoops', 'jersey_brazil', 'jersey_pinstripe', 'jersey_sash', 'jersey_checker', 'jersey_retro', 'jersey_tuxedo', 'jersey_hawaiian', 'jersey_rainbow', 'jersey_camo'],
     hat: ['none', 'crown', 'cap', 'party', 'viking', 'tophat', 'halo', 'hat_beanie', 'hat_fedora', 'hat_bunny', 'hat_headband', 'hat_wizard', 'hat_pirate', 'hat_propeller', 'hat_flower', 'hat_santa', 'hat_horns'],
