@@ -139,15 +139,7 @@ const lastTouchAny = () => balls.reduce((m, b) => Math.max(m, b.lastTouchTick ||
 // Run one plan through the real physics: lean (while charging, or for `walk` frames on foot),
 // then jump after n frames of charge. Touch faults count against us too.
 function simulatePlan(p, ball, lean, n, walk = 0) {
-    const me = sim.me, b = sim.ball;
-    copyActor(me, p); copyActor(b, ball);
-    const os = [];
-    for (const q of players) {
-        if (q === p) continue;
-        const o = sim.others[os.length];
-        copyActor(o, q);
-        os.push(o);
-    }
+    const { me, b, os } = AI.setup(p, ball);
     me.isCharging = n > 0;
     const limit = !mode().noTouchLimit;
     let touches = ball.touchTeam === p.playerNum ? (ball.touchCount || 0) : 0, lastTouch = -99;
@@ -203,21 +195,10 @@ function planVolleyball(bot, L) {
     const p = bot.p;
     const team = p.playerNum;
     // Focus on the ball that matters most: on our side, close, and low
-    let ball = balls[0], best = Infinity;
-    for (const bl of balls) {
-        const ours = (bl.x < CONFIG.netX ? 1 : 2) === team;
-        const s = Math.hypot(bl.x - p.x, bl.y - p.y) + (ours ? 0 : 400) - (CONFIG.groundY - bl.y) * 0.2;
-        if (s < best) { best = s; ball = bl; }
-    }
-    // In 2v2, whoever is further from the ball covers their own spot
-    const myD = Math.hypot(ball.x - p.x, ball.y - p.y);
-    const support = players.some(q => q !== p && q.playerNum === team && Math.hypot(ball.x - q.x, ball.y - q.y) < myD - 20);
+    const ball = AI.focus(bl => Math.hypot(bl.x - p.x, bl.y - p.y) + ((bl.x < CONFIG.netX ? 1 : 2) === team ? 0 : 400) - (CONFIG.groundY - bl.y) * 0.2);
+    const support = AI.support(p, ball);   // further from the ball than a teammate
 
-    if (Math.random() < L.blunder) {
-        bot.start([-1, 0, 1][(Math.random() * 3) | 0], L.charges[(Math.random() * L.charges.length) | 0]);
-        bot.seen = lastTouchAny();
-        return;
-    }
+    if (AI.blunder(bot, L)) { bot.seen = lastTouchAny(); return; }
 
     const noise = () => (Math.random() * 2 - 1) * L.noise;
     let bestScore = scorePlan(simulatePlan(p, ball, 0, 0), p, support) + noise();

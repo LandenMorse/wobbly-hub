@@ -6,12 +6,14 @@
 // =====================================================================
 const STEP = 1000 / 60;
 let last = performance.now(), acc = 0;
+let renderAlpha = 1;   // how far the frame is between the last two steps (render.js draws there)
 function advance(now) {
     acc += Math.min(250, now - last);
     last = now;
     let steps = 0;
     while (acc >= STEP && steps < 8) { tick(); acc -= STEP; steps++; }
     if (steps === 8) acc = 0;
+    renderAlpha = acc / STEP;
 }
 // Browsers stop requestAnimationFrame in a hidden tab, which would freeze the
 // host's simulation (and every guest with it). A Worker timer is not throttled

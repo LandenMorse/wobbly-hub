@@ -46,7 +46,10 @@ window.Account = (() => {
         if (!USERNAME.test(name)) return { error: `Use ${NAME_MIN} to ${NAME_MAX} letters, digits or _` };
         if (A.client && A.id && !(A.profile && A.profile.username === name)) {
             const row = { username: name, cosmetics: A.look() };
-            const { error } = A.profile ? await A.client.from('profiles').update(row).eq('id', A.id) : await A.client.from('profiles').insert({ id: A.id, ...row });
+            const save = () => A.profile ? A.client.from('profiles').update(row).eq('id', A.id) : A.client.from('profiles').insert({ id: A.id, ...row });
+            let { error } = await save();
+            // The profile may exist after all (it failed to load): reload it and update instead
+            if (error && error.code === '23505' && !A.profile && await A.refresh().then(() => A.profile, () => null)) ({ error } = A.profile.username === name ? {} : await save());
             if (error) return { error: error.code === '23505' ? 'Name taken, pick another' : 'Could not save your name' };
             A.profile = { ...A.profile, username: name };
         }
@@ -67,12 +70,13 @@ window.Account = (() => {
             document.head.appendChild(s);
         });
     }
-    A.refresh = async () => {   // profile and ratings from the database; the profile becomes the look and name
+    A.refresh = async () => {   // profile and ratings from the database; the profile becomes the look and name. Throws (keeping what we had) on failure
         if (!A.client || !A.id) return;
         const [p, r] = await Promise.all([
             A.client.from('profiles').select('username, cosmetics').eq('id', A.id).maybeSingle(),
             A.client.from('ratings').select('game, elo, wins, losses').eq('user_id', A.id)
         ]);
+        if (p.error || r.error) throw new Error('Could not load your profile');
         A.profile = p.data || null;
         A.ratings = {};
         for (const x of r.data || []) A.ratings[x.game] = x;
@@ -82,29 +86,44 @@ window.Account = (() => {
             persist();
         }
     };
-    // Resolves once signed in and the profile is loaded; A.id stays '' when offline (A.error says why).
-    A.ready = (async () => {
+    // Resolves once signed in and the profile is loaded, within 8 s; A.id stays '' when offline (A.error says why).
+    // A.retry() signs in again (it replaces A.ready); it also runs by itself when the browser comes back online.
+    let client = null;   // one Supabase client per page
+    const signIn = async () => {
+        await loadSupabase();
+        client = client || window.supabase.createClient(URL, KEY, { realtime: { params: { eventsPerSecond: 60 } } });
+        let { data: { session } } = await client.auth.getSession();
+        if (!session) {
+            const r = await client.auth.signInAnonymously();
+            if (r.error && (r.error.status === 429 || r.error.code === 'over_request_rate_limit')) throw new Error('Too many sign-in attempts right now. Wait a minute and try again.');
+            if (r.error || !r.data || !r.data.session) throw new Error('Could not sign in. In Supabase, turn on Authentication → Sign In / Providers → Allow anonymous sign-ins.');
+            session = r.data.session;
+        }
+        return session;
+    };
+    const within = (p, ms) => Promise.race([p, new Promise((res, rej) => setTimeout(() => rej(new Error('Connecting took too long. Check your internet connection.')), ms))]);
+    const connect = async () => {
         if (LOCAL) {   // a tab keeps its id (also in the game iframe it opens): sessionStorage
             A.id = sessionStorage.getItem('wobbly.testId') || Math.random().toString(36).slice(2, 12);
             sessionStorage.setItem('wobbly.testId', A.id);
             return;
         }
+        A.error = '';
         try {
-            await loadSupabase();
-            A.client = window.supabase.createClient(URL, KEY, { realtime: { params: { eventsPerSecond: 60 } } });
-            let { data: { session } } = await A.client.auth.getSession();
-            if (!session) {
-                const r = await A.client.auth.signInAnonymously();
-                if (r.error && (r.error.status === 429 || r.error.code === 'over_request_rate_limit')) throw new Error('Too many sign-in attempts right now. Wait a minute and try again.');
-                if (r.error || !r.data || !r.data.session) throw new Error('Could not sign in. In Supabase, turn on Authentication → Sign In / Providers → Allow anonymous sign-ins.');
-                session = r.data.session;
-            }
+            const session = await within(signIn(), 8000);
+            A.client = client;
             A.id = session.user.id;
             A.email = session.user.email || '';
-            try { A.client.realtime.setAuth(session.access_token); } catch (e) { /* the client keeps the token fresh itself */ }
-            await A.refresh();
+            try { client.realtime.setAuth(session.access_token); } catch (e) { /* the client keeps the token fresh itself */ }
+            try { navigator.storage.persist().catch(() => {}); } catch (e) { /* asks the browser not to clear the guest account with its cache */ }
+            await within(A.refresh(), 4000).catch(() => {});   // signed in even if the profile did not load; saveName copes
         } catch (e) { A.error = e.message || 'Could not sign in'; A.client = null; A.id = ''; }
-    })();
+    };
+    A.ready = connect();
+    A.retry = () => (A.ready = connect());
+    window.addEventListener('online', () => { if (!A.id && !LOCAL) A.retry(); });
+    // A guest account with rated games that only this browser knows: worth linking to an email
+    A.needsBackup = () => !!A.client && !A.email && Object.values(A.ratings).some(x => x.wins + x.losses > 0);
 
     // "Save account" links an email to the anonymous user; "Sign in" on another device sends a magic link to an existing one.
     const back = () => location.origin + location.pathname;
@@ -112,28 +131,47 @@ window.Account = (() => {
     A.signInEmail = async (email) => (await A.client.auth.signInWithOtp({ email, options: { emailRedirectTo: back(), shouldCreateUser: false } })).error;
 
     // ---------- Matchmaking and results ----------
-    // Contract (supabase/migrations/*_accounts_queue_elo.sql, *_queue_vs_bots.sql): join_queue(game, size, bots) -> match | null, leave_queue(),
-    // report_result(match, winner); matches carry { id, game, size, bots, room_code, host_id, players: [{ id, team }] }. bots: 2 players on team 1 vs bots, unrated.
+    // Contract (supabase/migrations/*_accounts_queue_elo.sql, *_queue_vs_bots.sql, *_trust_queue_heartbeat.sql): join_queue(game, size, bots) -> match | null,
+    // poll_queue() -> match | null (heartbeat while waiting), leave_queue(), report_result(match, winner) by every player; matches carry { id, game, size, bots, room_code, host_id, players: [{ id, team }] }. bots: 2 players on team 1 vs bots, unrated.
+    // Retries a network failure, a server error or a rate limit (not a refusal, which is the answer)
     const rpc = async (fn, args) => {
-        const { data, error } = await A.client.rpc(fn, args);
-        if (error) throw new Error(error.message);
-        return data;
+        for (const wait of [400, 1200, 3000, 0]) {
+            const { data, error, status } = await A.client.rpc(fn, args);
+            if (!error) return data;
+            if (!wait || (status && status < 500 && status !== 429)) throw new Error(error.message);
+            await new Promise(r => setTimeout(r, wait));
+        }
     };
-    let stop = () => {};
+    let stop = () => {}, poll = 0;
     // cb(match) for every match formed for me; replaces the previous listener
     A.watchMatches = (cb) => {   // no cb: stop listening
-        stop(); stop = () => {};
+        stop(); stop = () => {}; clearInterval(poll);
         if (!cb) return;
         if (LOCAL) { onMatch = cb; stop = () => { onMatch = null; }; return; }
+        onMatch = cb;
         const ch = A.client.channel('my-matches').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matches' }, (p) => cb(p.new)).subscribe();
-        stop = () => A.client.removeChannel(ch);
+        stop = () => { onMatch = null; A.client.removeChannel(ch); };
     };
     A.joinQueue = async (game, size, bots = false) => {
         if (LOCAL) return localJoin(game, size, bots);
-        const m = await rpc('join_queue', bots ? { p_game: game, p_size: size, p_bots: true } : { p_game: game, p_size: size });   // ranked calls work without the vs-bots migration
-        return m && m.id ? m : null;
+        const args = bots ? { p_game: game, p_size: size, p_bots: true } : { p_game: game, p_size: size };   // ranked calls work without the vs-bots migration
+        const m = await rpc('join_queue', args);
+        if (m && m.id) return m;
+        // While waiting: poll_queue every 5 s keeps our place (the server skips waiters it has not heard from in 20 s)
+        // and catches a match whose Realtime message we missed. Before the 20261109 migration there is no poll_queue: just stop.
+        clearInterval(poll);
+        poll = setInterval(async () => {
+            try {
+                const got = await rpc('poll_queue', {});
+                if (got && got.id && onMatch) onMatch(got);
+            } catch (e) {
+                if (/not in queue/.test(e.message)) A.client.rpc('join_queue', args).then(({ data }) => { if (data && data.id && onMatch) onMatch(data); });
+                else if (/does not exist|schema cache/.test(e.message)) clearInterval(poll);
+            }
+        }, 5000);
+        return null;
     };
-    A.leaveQueue = async () => { if (LOCAL) localLeave(); else if (A.client) await rpc('leave_queue', {}); };
+    A.leaveQueue = async () => { clearInterval(poll); if (LOCAL) localLeave(); else if (A.client) await rpc('leave_queue', {}); };
     A.getMatch = async (id) => {
         if (LOCAL) return (read('wobbly.test.matches') || {})[id] || null;
         const { data } = await A.client.from('matches').select('*').eq('id', id).maybeSingle();
@@ -142,8 +180,7 @@ window.Account = (() => {
     A.reportResult = async (id, winner) => {
         if (LOCAL) {   // stand-in: records the result once, no Elo
             const done = read('wobbly.test.results') || {};
-            if (done[id]) throw new Error('match already reported');
-            done[id] = winner; write('wobbly.test.results', done);
+            if (!(id in done)) { done[id] = winner; write('wobbly.test.results', done); }   // every player reports; the first one counts
             return;
         }
         await rpc('report_result', { p_match: id, p_winner: winner });

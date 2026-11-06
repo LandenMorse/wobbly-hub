@@ -88,7 +88,9 @@ async function flicker() {
         const leave = () => host.evaluate((id) => net.channel.recv({ k: 'leave', id }), gid);
         const join = () => host.evaluate((id) => net.channel.recv({ k: 'join', id, meta: { host: false, t: 1 } }), gid);
         const jump = () => host.evaluate(() => { const n = Date.now; Date.now = () => n() + 20000; });   // 15 s of absence pass
-        await leave(); await sleep(300); await join(); await jump(); await sleep(1000);
+        await leave(); await sleep(300);
+        ok(await host.evaluate(() => !seatActor(2).isBot), 'a player who just dropped out lost their seat to a bot');
+        await join(); await jump(); await sleep(1000);
         ok(Object.keys(await results(pages[0])).length === 0 && await host.evaluate(() => net.inMatch), 'a brief drop was reported or ended the match');
         await leave(); await sleep(300); await jump();   // the check runs again 15 s after the drop; wait for it
         for (let i = 0; i < 40 && !Object.keys(await results(pages[0])).length; i++) await sleep(500);
@@ -139,6 +141,15 @@ async function direct() {
         await guest.evaluate(() => { keys.KeyD = false; netLocalChanged(); });
         await sleep(300);
         ok(!await host.evaluate((s) => seatActor(s).input.right, await guest.evaluate(() => net.mySeat)), 'the input release did not reach the host');
+        // An effect is sent on several snapshots (packets get lost) and plays once
+        await guest.evaluate(() => { window.__banners = 0; const play = netPlayFx; netPlayFx = (f) => { if (f[0] === 'b' && f[1] === 'E2E') window.__banners++; play(f); }; });
+        await host.evaluate(() => showBanner('E2E', '', '#ffffff', 30));
+        await sleep(600);
+        ok(await guest.evaluate(() => window.__banners) === 1, 'an effect did not play exactly once');
+        // The host's side of the channel goes silent while it still looks open: the guest says so and the room channel takes over
+        await host.evaluate(() => { for (const r of Object.values(net.rtcs)) r.dc.send = () => {}; window.__relayed = 0; });
+        for (let i = 0; i < 20 && await host.evaluate(() => window.__relayed) === 0; i++) await sleep(250);
+        ok(await guest.evaluate(() => netLink()) === 'relay' && await host.evaluate(() => window.__relayed) > 0, 'a silent data channel was not detected');
         // The data channel closes for good: the room channel carries the match again
         await guest.evaluate(() => { net.rtcTries = 99; net.rtc.dc.close(); });
         for (let i = 0; i < 20 && await host.evaluate(() => Object.keys(net.rtcs).length); i++) await sleep(250);

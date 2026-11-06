@@ -225,15 +225,7 @@ function scoredFor(b) {
     return 0;
 }
 function simulatePlan(p, ball, lean, n, digN = -1) {
-    const me = sim.me, b = sim.ball;
-    copyActor(me, p); copyActor(b, ball);
-    const os = [];
-    for (const q of players) {
-        if (q === p) continue;
-        const o = sim.others[os.length];
-        copyActor(o, q);
-        os.push(o);
-    }
+    const { me, b, os } = AI.setup(p, ball);
     me.isCharging = n > 0;
     let result = 0, touched = false, f = 0;
     simulating = true;
@@ -274,19 +266,10 @@ function planSoccer(bot, L) {
     const team = p.playerNum;
     const ownGoalX = team === 1 ? 0 : CONFIG.fieldW;
     // Focus on the most dangerous ball (close to our goal, then to us)
-    let ball = balls[0], best = Infinity;
-    for (const bl of balls) {
-        const s = Math.hypot(bl.x - p.x, bl.y - p.y) + Math.abs(bl.x - ownGoalX) * 0.5;
-        if (s < best) { best = s; ball = bl; }
-    }
-    // In 2v2, whoever is further from the ball plays support
-    const myD = Math.hypot(ball.x - p.x, ball.y - p.y);
-    const support = players.some(q => q !== p && q.playerNum === team && Math.hypot(ball.x - q.x, ball.y - q.y) < myD - 20);
+    const ball = AI.focus(bl => Math.hypot(bl.x - p.x, bl.y - p.y) + Math.abs(bl.x - ownGoalX) * 0.5);
+    const support = AI.support(p, ball);   // further from the ball than a teammate
 
-    if (Math.random() < L.blunder) {
-        bot.start([-1, 0, 1][(Math.random() * 3) | 0], L.charges[(Math.random() * L.charges.length) | 0]);
-        return;
-    }
+    if (AI.blunder(bot, L)) return;
 
     const noise = () => (Math.random() * 2 - 1) * L.noise;
     let bestScore = scorePlan(simulatePlan(p, ball, 0, 0), ball, team, support) + noise();
@@ -362,7 +345,7 @@ Games.define({
     storageKey: 'wobblySoccer.settings.v2',      // keep: players' saved settings live here
     defaults: { target: 5, ball: 'classic', arena: 'night' },
     targets: [3, 5, 7],
-    config: { goalWidth: 90, goalHeight: 180 },
+    config: { goalWidth: 90, goalHeight: 180, ballMaxSpeed: 40 },   // 40 px a step stays under a player + ball width, so a ball never passes through anyone
     fields: [{ id: 'standard', name: 'Standard', w: 1024, spawn: 262 }, { id: 'long', name: 'Long', w: 2048, spawn: 524 }],
     modes: ['classic', 'timed', 'golden', 'multi', 'moon', 'infinite'],
     sounds: {

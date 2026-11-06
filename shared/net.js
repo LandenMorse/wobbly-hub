@@ -9,8 +9,12 @@
 //  tables are needed: a room lives entirely in one Realtime channel.
 //  Add ?nettest to the URL to test rooms between tabs without Supabase.
 // =====================================================================
-const SNAP_EVERY = 3;    // host sends a snapshot every 3 ticks (20 per second)
-const INTERP_TICKS = 6;  // guests draw ~100 ms behind the host to hide network jitter
+const SNAP_EVERY = 2;    // host sends a snapshot every 2 ticks (30 per second) over data channels...
+const RELAY_EVERY = 6;   // ...and every 6 ticks (10 per second) over Supabase, which counts every message against the Realtime quota
+const INTERP_DIRECT = 5, INTERP_RELAY = 10;   // guests draw this many ticks behind the newest snapshot (a gap plus jitter)
+const FX_KEEP = RELAY_EVERY + 2;   // an effect rides on every snapshot for this many ticks, so a dropped one does not lose it
+const AWAY_MS = 10000;   // a seated player who drops out of the room keeps their seat this long before a bot takes it
+const LOST_MS = 15000;   // a guest with no snapshot for this long has lost the host
 const NET_PREDICT = !/[?&]nopredict\b/.test(location.search);  // guest draws their own player ahead of the snapshots (visual only)
 const NET_LEAD_TICKS = 3;  // how far ahead of the newest snapshot we draw our own player (~50 ms)
 const MAX_GUEST_LINES = 12;
@@ -22,6 +26,7 @@ const RTC_ICE = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.c
 const RTC_OPEN_MS = 10000;   // give up on a data channel that has not opened by then
 const RTC_TRIES = 3;          // attempts per room before a guest stays on Supabase
 const IN_RESEND = 6;          // over the data channel, resend our input state every 6 ticks (it may drop a packet)
+const RTC_ALIVE_MS = 1500;    // a data channel that has carried nothing for this long is not trusted (keepalives every 0.5 s)
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const LOCAL_TEST = /[?&]nettest\b/.test(location.search);
 const NET_STATES = ['COUNTDOWN', 'PLAYING', 'GOAL', 'GAMEOVER', ...(G.states || [])];
@@ -46,44 +51,6 @@ for (const name of FX_SOUNDS) {
 function netUpdateRec() { net.rec = net.active && net.isHost && net.inMatch; }
 
 // ---------- Transport ----------
-// Same-browser stand-in for a Supabase channel (used with ?nettest)
-class LocalChannel {
-    constructor(topic) {
-        this.bc = new BroadcastChannel(topic);
-        this.h = { broadcast: {}, presence: {} };
-        this.state = {};
-        this.me = null;
-        this.bc.onmessage = (e) => this.recv(e.data);
-    }
-    on(type, filter, cb) { (this.h[type][filter.event] = this.h[type][filter.event] || []).push(cb); return this; }
-    fire(type, ev, arg) { (this.h[type][ev] || []).forEach(f => f(arg)); }
-    subscribe(cb) { setTimeout(() => cb('SUBSCRIBED'), 30); return this; }
-    async track(meta) {
-        this.me = meta; this.state[net.id] = [meta];
-        this.bc.postMessage({ k: 'join', id: net.id, meta, hello: true });
-        this.fire('presence', 'sync');
-        return 'ok';
-    }
-    presenceState() { return this.state; }
-    async send(m) { this.bc.postMessage({ k: 'b', event: m.event, payload: m.payload }); return 'ok'; }
-    async unsubscribe() { try { this.bc.postMessage({ k: 'leave', id: net.id }); this.bc.close(); } catch (e) { /* closed */ } return 'ok'; }
-    recv(d) {
-        if (d.k === 'b') this.fire('broadcast', d.event, { event: d.event, payload: d.payload });
-        else if (d.k === 'join') {
-            const fresh = !this.state[d.id];
-            this.state[d.id] = [d.meta];
-            if (d.hello && this.me) this.bc.postMessage({ k: 'join', id: net.id, meta: this.me });
-            if (fresh) this.fire('presence', 'join', { key: d.id, newPresences: [d.meta] });
-            this.fire('presence', 'sync');
-        } else if (d.k === 'leave') {
-            const m = this.state[d.id];
-            delete this.state[d.id];
-            if (m) this.fire('presence', 'leave', { key: d.id, leftPresences: m });
-            this.fire('presence', 'sync');
-        }
-    }
-}
-
 // The account (shared/account.js) owns the Supabase client and the sign-in; this takes its id and client.
 async function netAuth() {
     await Account.ready;
@@ -93,7 +60,7 @@ async function netAuth() {
 }
 // ws:<CODE>:host = the room (only the host may broadcast), ws:<CODE>:g:<uid> = one guest's line to the host
 function netChan(topic) {
-    if (LOCAL_TEST) return new LocalChannel(topic);
+    if (LOCAL_TEST) return new LocalChannel(topic, () => net.id);   // shared/common.js
     return net.client.channel(topic, { config: { private: true, broadcast: { self: false, ack: false }, presence: { key: net.id } } });
 }
 async function netRoomCreate(code) {
@@ -129,9 +96,20 @@ function netSend(event, payload) {
 // The channel is unordered and drops a packet after 150 ms: a late snapshot is worth less than the next one.
 const rtcIce = () => LOCAL_TEST ? [] : RTC_ICE;
 const rtcOpen = (r) => !!(r && r.dc && r.dc.readyState === 'open');
+// Open and heard from lately: a channel can stay 'open' for ~30 s after the path died, silently dropping everything
+const rtcAlive = (r) => rtcOpen(r) && performance.now() - r.rx < RTC_ALIVE_MS;
+// ICE 'disconnected' usually means the path is gone; give it 4 s to come back before treating the channel as failed
+function rtcWatchState(r, fail) {
+    r.pc.onconnectionstatechange = () => {
+        const st = r.pc.connectionState;
+        if (st === 'failed' || st === 'closed') fail();
+        else if (st === 'disconnected') { clearTimeout(r.dtimer); r.dtimer = setTimeout(fail, 4000); }
+        else if (st === 'connected') clearTimeout(r.dtimer);
+    };
+}
 function rtcClose(r) {
     if (!r) return;
-    clearTimeout(r.timer);
+    clearTimeout(r.timer); clearTimeout(r.dtimer);
     try { if (r.dc) r.dc.close(); } catch (e) { /* closed */ }
     try { r.pc.close(); } catch (e) { /* closed */ }
 }
@@ -165,10 +143,10 @@ async function rtcGuestStart() {
     const r = net.rtc = { pc, dc: null, id: randomCode() + randomCode(), at: performance.now(), dead: false, answered: false };
     const fail = () => { if (net.rtc !== r || r.dead) return; rtcClose(r); r.dead = true; r.at = performance.now(); };
     r.dc = pc.createDataChannel('m', { ordered: false, maxPacketLifeTime: 150 });
-    r.dc.onmessage = (e) => { if (net.rtc === r) rtcOnGuestMsg(e.data); };
-    r.dc.onopen = () => { if (net.rtc !== r) return; clearTimeout(r.timer); console.info('Wobbly: direct connection to the host'); netSendInput(); };
+    r.dc.onmessage = (e) => { if (net.rtc === r) { r.rx = performance.now(); rtcOnGuestMsg(e.data); } };
+    r.dc.onopen = () => { if (net.rtc !== r) return; clearTimeout(r.timer); r.rx = performance.now(); net.rtcTries = 0; console.info('Wobbly: direct connection to the host'); netSendInput(); };
     r.dc.onclose = fail;
-    pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' || pc.connectionState === 'closed') fail(); };
+    rtcWatchState(r, fail);
     r.timer = setTimeout(() => { if (!rtcOpen(r)) fail(); }, RTC_OPEN_MS);
     try {
         await pc.setLocalDescription(await pc.createOffer());
@@ -201,10 +179,11 @@ async function rtcHostOffer(uid, m) {
     pc.ondatachannel = (e) => {
         if (net.rtcs[uid] !== r) return;
         r.dc = e.channel;
-        r.dc.onmessage = (ev) => { if (net.rtcs[uid] === r) rtcOnHostMsg(uid, ev.data); };
+        r.rx = performance.now();
+        r.dc.onmessage = (ev) => { if (net.rtcs[uid] === r) { r.rx = performance.now(); rtcOnHostMsg(uid, ev.data); } };
         r.dc.onclose = drop;
     };
-    pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed' || pc.connectionState === 'closed') drop(); };
+    rtcWatchState(r, drop);
     try {
         await pc.setRemoteDescription({ type: 'offer', sdp: m.sdp });
         await pc.setLocalDescription(await pc.createAnswer());
@@ -216,20 +195,24 @@ async function rtcHostOffer(uid, m) {
 function rtcOnHostMsg(uid, data) {
     const m = rtcParse(data);
     if (m && m.e === 'in') netOnInput(uid, m.p);
+    else if (m && m.e === 'k') {   // keepalive: answer it, and note whether the guest hears us (h: 0 = our side of the channel is dead)
+        net.rtcs[uid].deaf = m.h === 0;
+        rtcSend(net.rtcs[uid], '{"e":"k"}');
+    }
 }
-// Host: send to everyone in the room, directly where we can, and over Supabase only if someone is not on a data channel
+// Host: send to everyone in the room, directly where we can, and over Supabase (at most every RELAY_EVERY ticks) if someone is not on a data channel
 function netSendFast(event, payload) {
     const ps = (net.channel && net.channel.presenceState && net.channel.presenceState()) || {};
     let str = null, relay = false;
     for (const id of new Set([...Object.keys(ps), ...Object.keys(net.rtcs)])) {
         if (id === net.id) continue;
-        if (rtcOpen(net.rtcs[id])) { str = str || JSON.stringify({ e: event, p: payload }); if (!rtcSend(net.rtcs[id], str)) relay = true; }
+        if (rtcAlive(net.rtcs[id]) && !net.rtcs[id].deaf) { str = str || JSON.stringify({ e: event, p: payload }); if (!rtcSend(net.rtcs[id], str)) relay = true; }
         else relay = true;
     }
-    if (relay) netSend(event, payload);
+    if (relay && tickCount % RELAY_EVERY === 0) netSend(event, payload);
 }
 // How this tab reaches the room: 'host', 'direct' (data channel) or 'relay' (Supabase)
-function netLink() { return !net.active ? '' : net.isHost ? 'host' : rtcOpen(net.rtc) ? 'direct' : 'relay'; }
+function netLink() { return !net.active ? '' : net.isHost ? 'host' : rtcAlive(net.rtc) ? 'direct' : 'relay'; }
 
 // ---------- Rooms ----------
 function olStatus(msg, err) {
@@ -270,7 +253,7 @@ async function netOpen(code, asHost, match) {
     } catch (err) { setOlBusy(false); olStatus(err.message || 'Could not connect.', true); return; }
     net.saved = { ...settings };
     Object.assign(net, {
-        active: true, isHost: asHost, inMatch: false, code, channel: ch, match: match || null, reported: false, gone: {},
+        active: true, isHost: asHost, inMatch: false, code, channel: ch, match: match || null, reported: false, gone: {}, away: {}, fxOut: [],
         hostId: asHost ? net.id : hostId, roster: {}, seats: asHost && !G.pickSeats ? { 1: net.id } : {}, wantSeq: 0,
         inputs: {}, snaps: [], mySeat: asHost && !G.pickSeats ? 1 : 0, fx: [], gch: null, gchs: {}, helloInfo: {}, pred: null,
         rtc: null, rtcs: {}, rtcTries: 0, inSeqs: {}, inSeq: Date.now()   // input sequence numbers start from the clock, so a reloaded tab still counts up
@@ -296,7 +279,12 @@ async function netOpen(code, asHost, match) {
       .on('broadcast', { event: 'tolobby' }, ({ payload }) => { if (!net.isHost && payload && payload.host === net.hostId) netBackToLobby(); })
       .on('presence', { event: 'sync' }, () => { if (net.isHost) netHostSync(); })
       .on('presence', { event: 'leave' }, ({ key }) => {
-          if (!net.isHost && net.hostId && key === net.hostId) netLeave('The host left the room.', true);
+          // Presence flickers on a reconnect. In a match the snapshots tell (guestTick); in the lobby wait a moment for the host to come back
+          if (net.isHost || !net.hostId || key !== net.hostId || net.inMatch) return;
+          clearTimeout(net.hostGone);
+          net.hostGone = setTimeout(() => {
+              if (net.active && !net.isHost && !net.inMatch && net.channel === ch && !(ch.presenceState() || {})[net.hostId]) netLeave('The host left the room.', true);
+          }, 4000);
       });
     let joined = false;
     ch.subscribe(async (status) => {
@@ -333,9 +321,11 @@ async function netOpen(code, asHost, match) {
 function netOpenGuestLine(code) {
     const gch = netChan(`ws:${code}:g:${net.id}`);
     net.gch = gch;
+    let joined = false;
     gch.subscribe((status) => {
         if (gch !== net.gch) return;
         if (status === 'SUBSCRIBED') {
+            joined = true;   // Supabase resubscribes by itself after a drop; say hello again in case the host forgot us
             const hello = () => {
                 if (!net.active || net.isHost || net.gch !== gch || net.roster[net.id]) { clearInterval(net.helloTimer); return; }
                 netSend('hello', netHello());
@@ -343,7 +333,7 @@ function netOpenGuestLine(code) {
             clearInterval(net.helloTimer);
             net.helloTimer = setInterval(hello, 1000);
             hello();
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        } else if (!joined && (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')) {
             netLeave('Could not open a line to the host. Check that the database migrations are applied.', true);
         }
     });
@@ -385,7 +375,7 @@ function netLeave(msg, err) {
     const ch = net.channel, gch = net.gch;
     netRoomClose();
     net.channel = null; net.gch = null;
-    clearTimeout(net.joinTimer); clearInterval(net.helloTimer); clearTimeout(net.matchTimer); clearTimeout(net.goneTimer);
+    clearTimeout(net.joinTimer); clearInterval(net.helloTimer); clearTimeout(net.matchTimer); clearTimeout(net.goneTimer); clearTimeout(net.awayTimer); clearTimeout(net.hostGone);
     for (const uid of Object.keys(net.gchs)) netDropGuest(uid);
     for (const uid of Object.keys(net.rtcs || {})) rtcClose(net.rtcs[uid]);
     rtcClose(net.rtc);
@@ -393,7 +383,7 @@ function netLeave(msg, err) {
         if (c) try { if (net.client && !LOCAL_TEST) net.client.removeChannel(c); else c.unsubscribe(); } catch (e) { /* ignore */ }
     }
     const wasPlaying = state !== 'MENU';
-    Object.assign(net, { active: false, isHost: false, inMatch: false, match: null, gone: {}, code: '', hostId: '', roster: {}, seats: {}, inputs: {}, snaps: [], mySeat: 0, fx: [], gchs: {}, helloInfo: {}, pred: null, rtc: null, rtcs: {}, rtcTries: 0, inSeqs: {} });
+    Object.assign(net, { active: false, isHost: false, inMatch: false, match: null, gone: {}, away: {}, code: '', hostId: '', roster: {}, seats: {}, inputs: {}, snaps: [], mySeat: 0, fx: [], fxOut: [], gchs: {}, helloInfo: {}, pred: null, rtc: null, rtcs: {}, rtcTries: 0, inSeqs: {} });
     netUpdateRec();
     if (net.saved) { Object.assign(settings, net.saved); net.saved = null; }
     for (const p of [p1, p2, p3, p4]) p.cos = null;
@@ -441,14 +431,26 @@ function netHostSync() {
         const h = net.helloInfo[id];
         if (h) { const { wq, ...pub } = h; roster[id] = pub; }
     }
-    for (const id of Object.keys(net.gchs)) if (!ps[id]) netDropGuest(id);
+    // Someone who drops out keeps their line (and their hello) for AWAY_MS, so a quick reconnect gets their seat back
+    const now = Date.now();
+    for (const id of Object.keys(net.gchs)) {
+        if (ps[id]) { delete net.away[id]; continue; }
+        net.away[id] = net.away[id] || now;
+        if (now - net.away[id] >= AWAY_MS) { netDropGuest(id); delete net.away[id]; }
+    }
+    clearTimeout(net.awayTimer);
+    if (Object.keys(net.away).length) net.awayTimer = setTimeout(netHostSync, AWAY_MS + 50);
     if (!roster[net.id]) roster[net.id] = { name: Account.name() || 'Player', ...Account.look(), t: 0 };
     net.roster = roster;
     const max = settings.teams === 2 ? 4 : 2;
     for (const s of [1, 2, 3, 4]) {
         const id = net.seats[s];
         if (!id) continue;
-        if (!roster[id] || (!net.inMatch && s > max)) {
+        if (net.inMatch && !roster[id] && net.away[id]) {   // gone for now: stand still until they are back or a bot takes over
+            const p = seatActor(s);
+            delete net.inputs[s];
+            if (p && !p.isBot) p.input.left = p.input.right = false;
+        } else if (!roster[id] || (!net.inMatch && s > max)) {
             delete net.seats[s];
             if (net.inMatch) netSeatToBot(s);
         }
@@ -464,7 +466,7 @@ function netHostSync() {
         for (const p of net.match.players) if (roster[p.id]) net.seats[p.team + 2 * used[p.team]++] = p.id;
     }
     if (net.match && net.inMatch && !net.reported) {   // the whole other team has been gone for 15 s (a brief reconnect does not count): the remaining team wins
-        const now = Date.now(), g = net.gone, myTeam = net.match.players.find(p => p.id === net.id).team;
+        const g = net.gone, myTeam = net.match.players.find(p => p.id === net.id).team;
         for (const p of net.match.players) { if (p.id === net.id || ps[p.id]) delete g[p.id]; else if (!g[p.id]) g[p.id] = now; }
         const other = net.match.players.filter(p => p.team !== myTeam);
         if (other.length && other.every(p => g[p.id])) {   // vs bots: no other team to leave
@@ -479,9 +481,9 @@ function netHostSync() {
     if (net.inMatch) netSetTags(); else renderLobby();
     if (net.match && !net.inMatch && net.match.players.every(p => roster[p.id])) netHostStart(true);
 }
-// Ranked, host only: tell the database who won (once)
+// Ranked: every player tells the database who won (once). Both teams agreeing settles it; a lone report settles a minute later.
 function netReport(team) {
-    if (!net.match || !net.isHost || net.reported) return;
+    if (!net.match || net.reported) return;
     net.reported = true;
     Account.reportResult(net.match.id, team).then(() => Account.refresh(), (e) => console.error('Could not report the result:', e));
 }
@@ -619,7 +621,7 @@ function netOnStart(m) {
     rtcGuestStart();
     applyHostSettings(m.s);
     net.inMatch = true;
-    net.snaps = []; net.renderT = -1; net.appliedT = -1; net.latestT = -1;
+    net.snaps = []; net.renderT = -1; net.appliedT = -1; net.latestT = -1; net.latestAt = performance.now(); net.fxSeen = 0;
     onlineScreen.classList.add('hidden');
     startMatch();
 }
@@ -640,7 +642,7 @@ function netLocalChanged() {
 function netSendInput() {
     if (!isGuest() || !net.inMatch || !net.mySeat) return;
     const L = net.local, m = { s: net.mySeat, l: L.l, r: L.r, j: L.j, d: L.d, q: ++net.inSeq };
-    if (!rtcSend(net.rtc, JSON.stringify({ e: 'in', p: m }))) netSend('in', m);
+    if (!(rtcAlive(net.rtc) && rtcSend(net.rtc, JSON.stringify({ e: 'in', p: m })))) netSend('in', m);
 }
 function netOnInput(uid, m) {
     if (!net.isHost || !net.inMatch || !m) return;
@@ -677,8 +679,14 @@ function netSendSnap() {
         sh: r2(shake), fl: r2(flash), ...G.snap?.(),
         a: players.map(p => [r2(p.x), r2(p.y), r2(p.angle), r2(p.vx), r2(p.vy), p.chargeAmount, p.isCharging ? 1 : 0, ...(ACT.snap?.(p) || [])]),
         b: balls.map(b => [r2(b.x), r2(b.y), r2(b.vx), r2(b.vy), r2(b.spin)]),
-        fx: net.fx.splice(0)
+        fx: netFxOut()
     });
+}
+// Each effect gets a number and rides on every snapshot for FX_KEEP ticks; guests play each number once
+function netFxOut() {
+    for (const f of net.fx.splice(0)) net.fxOut.push([++net.fxN, f, tickCount]);
+    while (net.fxOut.length && tickCount - net.fxOut[0][2] > FX_KEEP) net.fxOut.shift();
+    return net.fxOut.map(e => [e[0], e[1]]);
 }
 function netOnSnap(m) {
     if (!isGuest() || !net.inMatch || !m || typeof m.t !== 'number' || !Array.isArray(m.a) || !Array.isArray(m.b)) return;
@@ -723,10 +731,10 @@ function netApplyDiscrete(s) {
     if (NET_STATES.includes(s.st) && s.st !== state) {
         const was = state;
         state = s.st;
-        if (state === 'GAMEOVER') showGameOver();
+        if (state === 'GAMEOVER') { netReport(scores[1] > scores[2] ? 1 : 2); showGameOver(); }
         else if (was === 'GAMEOVER') celebrationScreen.classList.add('hidden');
     }
-    if (Array.isArray(s.fx)) for (const f of s.fx) netPlayFx(f);
+    if (Array.isArray(s.fx)) for (const e of s.fx) if (Array.isArray(e) && e[0] > net.fxSeen) { net.fxSeen = e[0]; netPlayFx(e[1]); }
 }
 function netInterpolate(T) {
     const S = net.snaps;
@@ -778,11 +786,20 @@ function netPredictSelf() {
 // Guest frame: no physics, just follow the host's snapshots
 function guestTick() {
     tickCount++;
-    if (rtcOpen(net.rtc)) { if (tickCount % IN_RESEND === 0) netSendInput(); }
-    else if (tickCount % 300 === 0) rtcGuestStart();   // retry a failed data channel every 5 s, a few times
+    if (rtcOpen(net.rtc)) {
+        if (tickCount % IN_RESEND === 0) netSendInput();
+        if (tickCount % 30 === 0) rtcSend(net.rtc, rtcAlive(net.rtc) ? '{"e":"k","h":1}' : '{"e":"k","h":0}');   // keepalive, answered by the host
+    } else if (tickCount % 300 === 0) rtcGuestStart();   // retry a failed data channel every 5 s, a few times
     if (state === 'MENU') return;
+    const quiet = performance.now() - net.latestAt;
+    if (net.inMatch && quiet > LOST_MS) {
+        if (net.match && !net.match.bots) netReport(net.match.players.find(p => p.id === net.id).team);   // ranked: the other side has a minute to say otherwise
+        netLeave('Lost the connection to the host.', true);
+        return;
+    }
+    if (net.inMatch && quiet > 2500 && !banner) showBanner('CONNECTION LOST', 'Waiting for the host…', '#ffffff', 60, true);
     if (net.latestT >= 0) {
-        const target = net.latestT + (performance.now() - net.latestAt) / STEP - INTERP_TICKS;
+        const target = net.latestT + (performance.now() - net.latestAt) / STEP - (rtcAlive(net.rtc) ? INTERP_DIRECT : INTERP_RELAY);
         if (net.renderT < 0 || Math.abs(target - net.renderT) > 30) net.renderT = target;
         else net.renderT += 1 + (target - net.renderT) * 0.05;
         for (const s of net.snaps) {
