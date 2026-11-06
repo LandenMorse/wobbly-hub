@@ -20,7 +20,7 @@ const { pathToFileURL } = require('url');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIR = path.join(ROOT, 'shared', 'cosmetics');
-const HTML = path.join(ROOT, 'games', 'soccer.html');
+const HTML = path.join(ROOT, 'play.html');   // the game page (needs ?game=soccer)
 const LOADER = path.join(DIR, 'load.js');
 const REGISTRY = path.join(DIR, 'registry.js');
 const PACKS = path.join(DIR, 'packs');
@@ -87,7 +87,7 @@ async function withPage(fn) {
         const consoleErrors = [];
         page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
         page.on('pageerror', e => consoleErrors.push(String(e && e.message || e)));
-        await page.goto(pathToFileURL(HTML).href + '?nettest');
+        await page.goto(pathToFileURL(HTML).href + '?game=soccer&nettest');
         await page.waitForFunction(() => typeof Cosmetics !== 'undefined');
         await page.waitForTimeout(300);
         const out = await fn(page);

@@ -11,7 +11,7 @@ node tools/cosmetics.js check --pack hat-cowboys   # must print OK with 0 errors
 node tools/cosmetics.js sheet hat --pack hat-cowboys   # renders dist/sheet-hat-hat-cowboys.png to look at
 ```
 
-Then serve the repo (`python3 -m http.server`) and open `games/soccer.html` in a browser and click the name in any picker (for example the hat name) to see every item in a searchable grid.
+Then serve the repo (`python3 -m http.server`) and open `play.html?game=soccer` in a browser and click the name in any picker (for example the hat name) to see every item in a searchable grid.
 
 **Only ever touch your own pack file.** Do not edit `shared/cosmetics/registry.js` or other people's packs. `new` adds your pack to the list in `shared/cosmetics/load.js` (commit that with your pack); if two branches both add packs and that list conflicts in a merge, keep every line from both sides.
 

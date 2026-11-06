@@ -239,6 +239,7 @@
     <!-- COSMETIC PACKS: list of files lives in shared/cosmetics/load.js -->
     <script src="shared/cosmetics/load.js"></script>
     <!-- /COSMETIC PACKS -->
+    <script src="games/index.js"></script>
 
 
     <script>
@@ -273,11 +274,9 @@
         const META_EVERY = 120;           // and our name, look and game room every 2 seconds
         const MAX_PEERS = 40;
 
-        // The game areas. Add a game here and it gets its own patch of ground, sign and join zone.
-        const AREAS = [
-            { id: 'soccer', title: ['WOBBLY', 'SOCCER'], file: 'games/soccer.html', x0: 220, x1: 780, accent: '#2ecc71', ground: 'grass' },
-            { id: 'volleyball', title: ['WOBBLY', 'VOLLEYBALL'], file: 'games/volleyball.html', x0: 1620, x1: 2180, accent: '#ff9f43', ground: 'sand' }
-        ];
+        // The game areas: each game in games/index.js gets its own patch of ground, sign and join zone. Only the layout lives here.
+        const AREA_LAYOUT = { soccer: { x0: 220, x1: 780 }, volleyball: { x0: 1620, x1: 2180 } };
+        const AREAS = Games.list.map(g => ({ ...g, title: ['WOBBLY', g.name.toUpperCase()], ...AREA_LAYOUT[g.id] }));
         const SPAWN_X = 1200;
 
         // Online (same Supabase project as the games; see supabase/migrations/*_hub_realtime.sql)
@@ -707,7 +706,7 @@
         function joinArea(area) {
             // Join a room someone in the hub is hosting in its lobby; otherwise start one for the next people
             const room = roomsFor(area.id).find(r => !r.inMatch);
-            const q = new URLSearchParams({ hub: '1', name: look.name || 'Player', skin: look.skin, hat: look.hat, boots: look.boots, acc: look.acc });
+            const q = new URLSearchParams({ game: area.id, hub: '1', name: look.name || 'Player', skin: look.skin, hat: look.hat, boots: look.boots, acc: look.acc });
             if (room) q.set('join', room.code); else q.set('create', '1');
             if (LOCAL_TEST) q.set('nettest', '1');
             Sound.portal();
