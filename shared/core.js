@@ -149,7 +149,8 @@ const net = {
     id: (() => { try { const a = new Uint32Array(3); crypto.getRandomValues(a); return Array.from(a, v => v.toString(36)).join('').slice(0, 14); } catch (e) { return Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 8); } })(), code: '', hostId: '',
     client: null, match: null, reported: false, gone: {}, matchTimer: 0, goneTimer: 0, channel: null, joinTimer: 0, gch: null, gchs: {}, helloInfo: {}, helloTimer: 0, pred: null,
     roster: {}, seats: {}, mySeat: 0, saved: null,
-    inputs: {}, local: { l: false, r: false, j: false, d: false }, touch: { j: false, d: false },
+    inputs: {}, inSeqs: {}, inSeq: 0, local: { l: false, r: false, j: false, d: false }, touch: { j: false, d: false },
+    rtc: null, rtcs: {}, rtcTries: 0,
     snaps: [], renderT: -1, appliedT: -1, latestT: -1, latestAt: 0,
     fx: [], sndDepth: 0
 };
