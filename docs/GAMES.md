@@ -6,14 +6,14 @@ Steps: add `{ id, name, file, accent, ground }` to `games/index.js` (the hub's a
 
 ## Load order (no build step, classic scripts, works from file://)
 
-`shared/cosmetics/load.js`, `shared/hub-link.js`, `games/index.js`, `games/<id>.js`, then `shared/modes.js`, `core.js`, `render.js`, `net.js`, `main.js`. The game file runs first and only registers itself; the engine files read it as `G` (`Games.current`). Top-level `const`/`let`/`function` in the engine are globals, so hooks can use `state`, `balls`, `players`, `CONFIG`, `emit`, `Sound`, `showBanner`, `settings`, `net`... directly. Wrap the game file in an IIFE so its helpers stay private.
+`shared/hub-link.js`, `shared/cosmetics/load.js`, `shared/common.js` (`TEAM`, `Sound`, `drawBlob`, `mulberry32`, `LocalChannel`, also used by the hub), `shared/account.js`, `games/index.js`, `games/<id>.js`, then `shared/modes.js`, `core.js`, `render.js`, `net.js`, `main.js`. The game file runs first and only registers itself; the engine files read it as `G` (`Games.current`). Top-level `const`/`let`/`function` in the engine are globals, so hooks can use `state`, `balls`, `players`, `CONFIG`, `emit`, `Sound`, `showBanner`, `settings`, `net`... directly. Wrap the game file in an IIFE so its helpers stay private.
 
 ## Fields (data)
 
 | field | meaning |
 | --- | --- |
 | `id` | must be listed in `games/index.js` (`name`, `file`, `ranked`, `accent`, `ground` come from there) |
-| `ranked` (in `games/index.js`) | the mode id ranked matches are played in (`'classic'`). The hub gives every listed game 1v1 and 2v2 ranked pads; ranked rooms are humans only, seats come from the match, and the host reports the winning team at full time (or a walkover when the other team never shows up or is gone for 15 s). Known limit: if the host never shows up or vanishes, nobody can report; the database closes such a match after its 15 minute cap |
+| `ranked` (in `games/index.js`) | the mode id ranked matches are played in (`'classic'`). The hub gives every listed game 1v1 and 2v2 ranked pads; ranked rooms are humans only, seats come from the match, and every player reports the winning team at full time (the host also reports a walkover when the other team never shows up or is gone for 15 s; a guest whose host is gone for 15 s reports its own team). A player who drops out keeps their seat for 10 s before a bot takes it |
 | `point` | word for a score: `'goal'` (HUD, banners, chips, mode text) |
 | `subtitle`, `startLabel`, `overLabel`, `hint` | menu texts: subtitle under the title, start button, end-of-match heading, last part of the key hint line |
 | `storageKey` | localStorage key for the game's settings. Never change a shipped key: saves live there. (Name and look are not here: they belong to the account, `shared/account.js`) |
@@ -48,7 +48,7 @@ The second button, `action: { name, ... }` (`name` is its label in menus and tou
 - `down(p)` / `up(p)`: the button went down / up. `step(p)`: each step per player. `squash(p)`: 0..1 body squash for drawing.
 - `snap(p)` / `apply(p, A, i)`: extra per-player numbers for online snapshots, and how a guest reads them back (`A[i...]`).
 
-Bots, `ai: { levels, state, busy, plan }`: the engine's `Bot` handles charging a jump and the cooldown. `levels` = skill tables `{ react, noise, blunder, charges, ... }` for easy/normal/hard; `state` = extra `Bot` fields; `busy(bot, L)` = return true while a game move is running; `plan(bot, L)` = the bot is idle on the ground: pick a plan by simulating ahead (`sim`, `copyActor`, `AI_HORIZON`, `resolveCollision`) and call `bot.start(lean, chargeFrames)` or set `bot.cooldown`.
+Bots, `ai: { levels, state, busy, plan }`: the engine's `Bot` handles charging a jump and the cooldown. `levels` = skill tables `{ react, noise, blunder, charges, ... }` for easy/normal/hard; `state` = extra `Bot` fields; `busy(bot, L)` = return true while a game move is running; `plan(bot, L)` = the bot is idle on the ground: pick a plan by simulating ahead (`AI.setup(p, ball)` copies the world into the sim actors; also `AI.focus(score)`, `AI.support(p, ball)`, `AI.blunder(bot, L)`, `AI_HORIZON`, `resolveCollision`) and call `bot.start(lean, chargeFrames)` or set `bot.cooldown`.
 
 Drawing, `draw: { field, world, screen, thumb }`
 - `field(g, A, FW, GY)` (required): goals/net/lines drawn once into the arena background `g` (`A` = the arena, `GY` = ground y).

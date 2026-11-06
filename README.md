@@ -4,7 +4,7 @@ A monorepo of small browser games (plain HTML and JS, no framework, no build ste
 
 - `index.html`: the hub
 - `play.html?game=<id>`: the one game page; `games/index.js` lists the games, `games/<id>.js` holds a game's rules ([docs/GAMES.md](docs/GAMES.md))
-- `shared/`: code every page uses: the game engine (`core.js`, `modes.js`, `render.js`, `net.js`, `main.js`) and the cosmetics (`shared/cosmetics/load.js` lists the packs)
+- `shared/`: code every page uses: the game engine (`core.js`, `modes.js`, `render.js`, `net.js`, `main.js`), what the hub and the game page share (`common.js`: the sound synth, the player drawing, the `?nettest` channel; `ui.css`: the shared styles) and the cosmetics (`shared/cosmetics/load.js` lists the packs)
 - `shared/account.js`: the player's account (anonymous sign-in, username and look in the profile, ratings, matchmaking queue, results). The hub and every game page use it; it is the only place that knows the Supabase project
 - `supabase/`: backend, see [supabase/README.md](supabase/README.md)
 
@@ -16,7 +16,7 @@ python3 -m http.server
 
 Open http://localhost:8000/ (or http://localhost:8000/play.html?game=soccer). Add `?nettest` to a page URL for the network test mode. Opening a game file straight from disk also works. In `?nettest` there is no Supabase: the account is local to the tab and the ranked queue is a BroadcastChannel stand-in (no Elo), so ranked matches work between tabs of one browser. Online matches send snapshots and inputs peer to peer (WebRTC) and fall back to Supabase Realtime; add `?nortc` to a game URL to force the fallback.
 
-Pads in every game area of the hub (hold on one): 1v1 and 2v2 ranked queue for a matchmade game; the match's room is made by the database, its host reports the result at the end (needs the `accounts_queue_elo` migration). 2v2 vs bots queues two players together against two bots, unrated (needs `queue_vs_bots`). CPU / local opens the game's own menu with no room: play a bot or two players on one keyboard, no account or connection needed. Holding anywhere else in an area joins or starts a casual room (offline: the game's menu too).
+Pads in every game area of the hub (hold on one): 1v1 and 2v2 ranked queue for a matchmade game; the match's room is made by the database, and every player reports the result at the end: both teams agreeing rates it at once, a disagreement voids it, a lone report counts after a minute (needs the `accounts_queue_elo` and `trust_queue_heartbeat` migrations). 2v2 vs bots queues two players together against two bots, unrated (needs `queue_vs_bots`). CPU / local opens the game's own menu with no room: play a bot or two players on one keyboard, no account or connection needed. Holding anywhere else in an area joins or starts a casual room (offline: the game's menu too).
 
 Tests: `node tools/e2e.js` (pages load, the ranked queue and match flow in `?nettest`, walkovers, the peer-to-peer link and its fallback; needs Playwright), and the SQL tests in `supabase/tests/` (see [supabase/README.md](supabase/README.md)).
 

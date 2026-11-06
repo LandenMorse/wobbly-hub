@@ -18,6 +18,7 @@ create publication supabase_realtime;
 \ir ../migrations/20261104000000_realtime_rooms.sql
 \ir ../migrations/20261107000000_accounts_queue_elo.sql
 \ir ../migrations/20261108000000_queue_vs_bots.sql
+\ir ../migrations/20261109000000_trust_queue_heartbeat.sql
 
 -- Run the next statements as this user (signed in, role authenticated); pg_temp.me(null) goes back to the superuser.
 create function pg_temp.me(u uuid) returns void language plpgsql as $$
@@ -97,14 +98,18 @@ begin
   perform pg_temp.me(u[1]);
   assert pg_temp.fails($q$select public.join_queue('soccer', 2)$q$, 'P0001'), 'cannot queue while in a live match';
 
-  -- ---- report_result: host only, once; 1000 vs 1000 -> +16 / -16
-  perform pg_temp.me(u[2]);
-  assert pg_temp.fails(format($q$select public.report_result(%L, 2::smallint)$q$, m.id), 'P0001'), 'a guest cannot report';
+  -- ---- report_result: players only, once each; both teams agree -> settled; 1000 vs 1000 -> +16 / -16
+  perform pg_temp.me(u[7]);
+  assert pg_temp.fails(format($q$select public.report_result(%L, 2::smallint)$q$, m.id), 'P0001'), 'someone outside the match cannot report';
   perform pg_temp.me(u[1]);
   assert pg_temp.fails(format($q$select public.report_result(%L, 3::smallint)$q$, m.id), 'P0001'), 'winner must be 1 or 2';
   perform public.report_result(m.id, 1::smallint);
-  assert pg_temp.fails(format($q$select public.report_result(%L, 1::smallint)$q$, m.id), 'P0001'), 'only once';
+  assert pg_temp.fails(format($q$select public.report_result(%L, 1::smallint)$q$, m.id), 'P0001'), 'once per player';
+  assert (select status from public.matches where id = m.id) = 'live', 'one team alone does not settle it at once';
+  assert public.join_queue('soccer', 2) is null, 'a match you reported does not stop you queueing';
+  perform public.leave_queue();
   perform pg_temp.me(u[2]);
+  perform public.report_result(m.id, 1::smallint);
   assert (select (elo, wins, losses) from public.ratings where user_id = u[1] and game = 'soccer') = row(1016, 1, 0), 'winner +16';
   assert (select (elo, wins, losses) from public.ratings where user_id = u[2] and game = 'soccer') = row(984, 0, 1), 'loser -16';
   assert (select status || winner from public.matches where id = m.id) = 'done1', 'match closed';
@@ -136,9 +141,15 @@ begin
   assert (select count(*) from public.queue) = 1, 'only the 1v1 waiter is left';
 
   -- ---- 2v2 deltas: team A = 1500 + 700 (avg 1100) beats B = 1100 + 1000 (avg 1050): +14 / -14
+  -- Only team B (the host's) reports; a minute later it settles as they said
   perform pg_temp.me(u[5]);
   perform public.report_result(m.id, (select (p ->> 'team')::smallint from jsonb_array_elements(m.players) p where p ->> 'id' = u[3]::text));
   perform pg_temp.me(null);
+  perform public.wobbly_finalize_reports();
+  assert (select status from public.matches where id = m.id) = 'live', 'within the minute the other team can still answer';
+  update public.matches set reported_at = now() - interval '61 seconds' where id = m.id;
+  perform public.wobbly_finalize_reports();
+  assert (select status from public.matches where id = m.id) = 'done', 'a lone report settles after a minute';
   assert (select elo from public.ratings where user_id = u[3] and game = 'soccer') = 1514, 'A +14';
   assert (select elo from public.ratings where user_id = u[6] and game = 'soccer') = 714, 'A +14 (other member)';
   assert (select elo from public.ratings where user_id = u[4] and game = 'soccer') = 1086, 'B -14';
@@ -160,24 +171,24 @@ begin
   perform pg_temp.me(null);
   assert m.host_id = u[10] and (select count(*) from public.rooms where host_id = u[10]) = 1 and m.room_code <> 'ZZZZ', 'existing room of the host replaced';
 
-  -- ---- a match counts as live for 15 minutes: an abandoned one stops blocking its players
+  -- ---- a match counts as live for 30 minutes: an abandoned one stops blocking its players
   perform pg_temp.me(null);
   delete from public.queue;
   insert into public.matches(game, size, room_code, host_id, players, created_at) values
-    ('soccer', 2, 'SSSS', u[14], jsonb_build_array(jsonb_build_object('id', u[12], 'team', 1), jsonb_build_object('id', u[14], 'team', 2)), now() - interval '10 minutes'),
-    ('soccer', 2, 'TTTT', u[14], jsonb_build_array(jsonb_build_object('id', u[13], 'team', 1), jsonb_build_object('id', u[14], 'team', 2)), now() - interval '20 minutes');
+    ('soccer', 2, 'SSSS', u[14], jsonb_build_array(jsonb_build_object('id', u[12], 'team', 1), jsonb_build_object('id', u[14], 'team', 2)), now() - interval '20 minutes'),
+    ('soccer', 2, 'TTTT', u[14], jsonb_build_array(jsonb_build_object('id', u[13], 'team', 1), jsonb_build_object('id', u[14], 'team', 2)), now() - interval '40 minutes');
   perform pg_temp.me(u[12]);
-  assert pg_temp.fails($q$select public.join_queue('soccer', 2)$q$, 'P0001'), 'a 10-minute-old live match still blocks queueing';
+  assert pg_temp.fails($q$select public.join_queue('soccer', 2)$q$, 'P0001'), 'a 20-minute-old live match still blocks queueing';
   perform pg_temp.me(u[13]);
-  assert public.join_queue('soccer', 2) is null, 'a 20-minute-old live match no longer blocks queueing';
+  assert public.join_queue('soccer', 2) is null, 'a 40-minute-old live match no longer blocks queueing';
 
   -- ---- stale rows
   perform pg_temp.me(null);
   delete from public.queue;
-  insert into public.queue(user_id, game, size, joined_at) values (u[12], 'soccer', 2, now() - interval '11 minutes'), (u[13], 'soccer', 2, now() - interval '9 minutes');
+  insert into public.queue(user_id, game, size, seen_at) values (u[12], 'soccer', 2, now() - interval '61 seconds'), (u[13], 'soccer', 2, now() - interval '30 seconds');
   perform public.wobbly_expire_stale();
-  assert (select array_agg(user_id) from public.queue where user_id in (u[12], u[13])) = array[u[13]], 'old queue rows deleted';
-  assert (select status from public.matches where room_code = 'TTTT') = 'done' and (select status from public.matches where room_code = 'SSSS') = 'live', 'old live match closed';
+  assert (select array_agg(user_id) from public.queue where user_id in (u[12], u[13])) = array[u[13]], 'queue rows not heard from for a minute deleted';
+  assert (select status from public.matches where room_code = 'TTTT') = 'void' and (select status from public.matches where room_code = 'SSSS') = 'live', 'old live match voided';
   assert (select count(*) from public.ratings where user_id in (u[12], u[13])) = 0, 'no rating change on expiry';
 
   -- ---- 2v2 vs bots: two players, both on team 1, never mixed with the 1v1 queue, unrated
@@ -197,6 +208,36 @@ begin
   assert (select (elo, wins, losses) from public.ratings where user_id = u[1] and game = 'soccer') = row(1016, 1, 0), 'bots match leaves ratings alone';
   assert (select (elo, wins, losses) from public.ratings where user_id = u[2] and game = 'soccer') = row(984, 0, 1), 'no loss counted';
   assert not exists (select 1 from public.rooms where code = m.room_code), 'bots room closed';
+
+  -- ---- both teams report, and disagree: void, no rating change
+  perform pg_temp.me(null);
+  delete from public.queue; delete from public.matches;
+  perform pg_temp.me(u[1]); assert public.join_queue('soccer', 2) is null;
+  perform pg_temp.me(u[2]); m := public.join_queue('soccer', 2);
+  perform public.report_result(m.id, 2::smallint);
+  perform pg_temp.me(u[1]); perform public.report_result(m.id, 1::smallint);
+  perform pg_temp.me(null);
+  assert (select status from public.matches where id = m.id) = 'void', 'disputed match is void';
+  assert (select (elo, wins, losses) from public.ratings where user_id = u[1] and game = 'soccer') = row(1016, 1, 0), 'void leaves ratings alone';
+  assert not exists (select 1 from public.rooms where code = m.room_code), 'void match room closed';
+
+  -- ---- the queue heartbeat: a waiter not heard from for 20 s is not matched; poll_queue keeps you in line and finds your match
+  delete from public.queue;
+  perform pg_temp.me(u[3]); assert public.join_queue('soccer', 2) is null, 'u3 waits';
+  perform pg_temp.me(null); update public.queue set seen_at = now() - interval '25 seconds', joined_at = now() - interval '25 seconds' where user_id = u[3];
+  perform pg_temp.me(u[4]); assert public.join_queue('soccer', 2) is null, 'a quiet waiter (closed tab) is not matched';
+  perform pg_temp.me(u[3]); m := public.poll_queue();
+  assert m.id is not null and m.host_id = u[3], 'polling again makes u3 matchable: matched with u4, u3 (older) hosts';
+  perform pg_temp.me(u[4]); m2 := public.poll_queue();
+  assert m2.id = m.id, 'the other player finds the match by polling';
+  perform pg_temp.me(u[5]);
+  assert pg_temp.fails($q$select public.poll_queue()$q$, 'P0001'), 'poll_queue outside the queue says so';
+  perform pg_temp.me(null); delete from public.queue;
+  perform pg_temp.me(u[6]); perform public.join_queue('soccer', 4);
+  perform pg_temp.me(null); update public.queue set joined_at = now() - interval '5 seconds' where user_id = u[6];
+  perform pg_temp.me(u[6]); perform public.join_queue('soccer', 4);
+  perform pg_temp.me(null);
+  assert (select joined_at < now() - interval '4 seconds' from public.queue where user_id = u[6]), 'joining again keeps your place in line';
 
   raise notice 'all accounts / queue / elo checks passed';
 end $$;

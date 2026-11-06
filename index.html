@@ -4,82 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Wobbly Hub</title>
+    <link rel="stylesheet" href="shared/ui.css">
     <style>
-        :root {
-            --bg-dark: #121214;
-            --neon-blue: #00d2ff;
-            --neon-red: #ff3838;
-            --gold: #f1c40f;
-            --card-bg: rgba(255, 255, 255, 0.07);
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Roboto, sans-serif;
-            user-select: none;
-            -webkit-user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        html, body { height: 100%; }
-
-        body {
-            background: radial-gradient(circle at 50% 30%, #1d1d24, var(--bg-dark) 70%);
-            height: 100vh;
-            height: 100dvh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-        }
-
-        button { font: inherit; border: none; cursor: pointer; outline: none; }
-
-        #game-container {
-            position: relative;
-            flex: none;
-            width: 1024px;
-            height: 576px;
-            border-radius: 12px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-            background: #1e272e;
-            transform-origin: center center;
-            touch-action: none;
-            overflow: hidden;
-        }
 
         #hubCanvas { display: block; width: 1024px; height: 576px; border-radius: 12px; }
-
-        /* ---------- Overlays ---------- */
-        .overlay {
-            position: absolute;
-            inset: 0;
-            background: rgba(12, 16, 20, 0.86);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 10;
-            border-radius: 12px;
-            transition: opacity 0.25s ease;
-        }
-        .overlay.hidden { opacity: 0; pointer-events: none; }
-
-        .game-title {
-            font-size: 3rem;
-            font-weight: 900;
-            color: #fff;
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            line-height: 1;
-            text-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
-        }
-        .game-title span { color: var(--gold); }
         .subtitle { color: #8a98a5; font-size: 0.95rem; margin: 0.45rem 0 1rem; }
-
-        .card { background: var(--card-bg); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; }
         .entry-card { width: 560px; padding: 16px 18px; display: flex; gap: 18px; align-items: center; border-bottom: 4px solid var(--gold); margin-bottom: 1rem; }
         .preview { width: 160px; height: 160px; flex: none; }
         .entry-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -93,15 +22,12 @@
             color: #fff; font-size: 0.95rem; user-select: text; -webkit-user-select: text;
         }
         #name-input:focus { border-color: var(--gold); }
-
-        .hide { display: none !important; }
         #acct { margin-top: 4px; font-size: 0.72rem; color: #a4b0be; line-height: 1.35; }
         #acct .row { display: flex; gap: 6px; margin-top: 4px; }
         #email-input { flex: 1; min-width: 0; padding: 5px 8px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 0.78rem; outline: none; user-select: text; -webkit-user-select: text; }
         #acct button { padding: 5px 9px; border-radius: 8px; background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 0.72rem; font-weight: 700; }
         #acct button:hover { background: rgba(255, 255, 255, 0.24); }
         #acct-msg { color: var(--gold); min-height: 1em; }
-        .picker { display: flex; align-items: center; gap: 6px; width: 100%; }
         .pick-kind { font-size: 0.68rem; color: #8a98a5; text-transform: uppercase; letter-spacing: 1px; width: 50px; }
         .pick-label { flex: 1; text-align: center; color: #fff; font-weight: 700; font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .arrow {
@@ -109,25 +35,7 @@
             background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 0.75rem;
             transition: background 0.15s;
         }
-        .arrow:hover { background: rgba(255, 255, 255, 0.22); }
-
-        .big-btn {
-            padding: 0.8rem 3.2rem;
-            font-size: 1.3rem;
-            font-weight: 800;
-            text-transform: uppercase;
-            background: var(--gold);
-            color: #000;
-            border-radius: 50px;
-            box-shadow: 0 10px 25px rgba(241, 196, 15, 0.35);
-            transition: transform 0.1s;
-        }
-        .big-btn:hover { transform: translateY(-2px); }
         .hint { color: #5f6b76; font-size: 0.75rem; margin-top: 0.7rem; }
-        .keys b {
-            display: inline-block; background: #fff; color: #000; border-radius: 4px;
-            padding: 0 5px; font-size: 0.7rem; line-height: 1.4; box-shadow: 0 2px 0 #bdc3c7;
-        }
 
         /* ---------- HUD ---------- */
         .pill {
@@ -146,11 +54,6 @@
         #controls-pill b {
             display: inline-block; background: #fff; color: #000; border-radius: 4px;
             padding: 0 5px; font-size: 0.68rem; line-height: 1.4; box-shadow: 0 2px 0 #bdc3c7;
-        }
-        .icon-btn {
-            position: absolute; top: 18px; z-index: 6;
-            width: 40px; height: 40px; border-radius: 12px;
-            background: rgba(0, 0, 0, 0.5); color: #fff; font-size: 0.95rem;
         }
         #look-btn { right: 66px; }
         #mute-btn { right: 18px; }
@@ -173,34 +76,10 @@
             background: rgba(0, 0, 0, 0.6); color: #fff; border: 1px solid rgba(255, 255, 255, 0.15);
         }
         #back-btn:hover { background: rgba(0, 0, 0, 0.8); }
-
-        /* ---------- Touch controls ---------- */
-        #touch-controls { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
-        #touch-controls.off { display: none; }
-        .tc-cluster { position: absolute; bottom: 12px; display: flex; gap: 12px; align-items: flex-end; }
         .tc-cluster.left { left: 24px; }
         .tc-cluster.right { right: 24px; }
-        .tc-btn {
-            pointer-events: auto; touch-action: none;
-            width: 76px; height: 76px; border-radius: 50%;
-            background: rgba(255, 255, 255, 0.14); border: 2px solid rgba(255, 255, 255, 0.3);
-            color: #fff; font-size: 1.5rem; font-weight: 800;
-            display: flex; align-items: center; justify-content: center;
-        }
         .tc-btn.wide { width: 92px; height: 92px; font-size: 0.95rem; letter-spacing: 1px; }
         .tc-btn.play { border-color: var(--gold); }
-        .tc-btn.on { background: rgba(255, 255, 255, 0.38); }
-
-        #rotate-hint {
-            display: none; position: fixed; inset: 0; z-index: 100;
-            background: var(--bg-dark); color: #fff;
-            flex-direction: column; align-items: center; justify-content: center;
-            gap: 12px; font-size: 1.1rem; text-align: center; padding: 2rem;
-        }
-        #rotate-hint .big { font-size: 3rem; }
-        @media (orientation: portrait) and (pointer: coarse) {
-            #rotate-hint { display: flex; }
-        }
     </style>
 </head>
 <body>
@@ -233,13 +112,13 @@
         </div>
 
         <!-- HUD -->
-        <div id="online-pill" class="pill"><span id="online-dot"></span><span id="online-text">Offline</span></div>
+        <div id="online-pill" class="pill" role="status"><span id="online-dot"></span><span id="online-text">Offline</span></div>
         <div id="rating-pill" class="pill"></div>
-        <div id="queue-pill" class="pill"><span id="queue-text"></span><button id="queue-cancel">Cancel</button></div>
+        <div id="queue-pill" class="pill" role="status"><span id="queue-text"></span><button id="queue-cancel">Cancel</button></div>
         <div id="controls-pill" class="pill"><b>A</b> <b>D</b> walk · hold <b>W</b> jump · hold <b>S</b> in an area to play</div>
-        <button id="look-btn" class="icon-btn" title="Change your look">👕</button>
-        <button id="mute-btn" class="icon-btn" title="Mute (M)">🔊</button>
-        <div id="toast"></div>
+        <button id="look-btn" class="icon-btn" title="Change your look" aria-label="Change your look">👕</button>
+        <button id="mute-btn" class="icon-btn" title="Mute (M)" aria-label="Mute">🔊</button>
+        <div id="toast" role="status" aria-live="polite"></div>
 
         <div id="touch-controls" class="off">
             <div class="tc-cluster left" id="tc-left"></div>
@@ -257,6 +136,7 @@
     <!-- COSMETIC PACKS: list of files lives in shared/cosmetics/load.js -->
     <script src="shared/cosmetics/load.js"></script>
     <!-- /COSMETIC PACKS -->
+    <script src="shared/common.js"></script>
     <script src="shared/account.js"></script>
     <script src="games/index.js"></script>
 
@@ -288,9 +168,8 @@
         const AIR_GRAVITY = 0.6, APEX_BAND = 3, APEX_HANG = 0.5, JUMP_SCALE = Math.sqrt(AIR_GRAVITY);
         const MAX_CHARGE = 60;
         const HOLD_FRAMES = 70;           // hold S / ↓ this long in an area to join (~1.2 s)
-        const TEAM = { 1: '#00d2ff', 2: '#ff3838' };
-        const POS_EVERY = 6;              // send our position every 6 frames (10 per second) while moving
-        const META_EVERY = 120;           // and our name, look and game room every 2 seconds
+        const POS_EVERY = 8;              // send our position every 8 frames (7.5 per second) while moving; others extrapolate between
+        const META_EVERY = 600;           // and our name, look and game room every 10 seconds (changes and newcomers get it at once)
         const META_EVERY_PLAYING = 600;   // only every 10 seconds while a game is open (we stand still; room changes are sent as they happen)
         const MAX_PEERS = 40;
 
@@ -321,64 +200,12 @@
             try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ team: look.team, muted: look.muted })); } catch (e) { /* ignore */ }
         }
 
-        // =====================================================================
-        //  SOUND (WebAudio synth, no assets)
-        // =====================================================================
-        const Sound = {
-            ac: null, master: null, nbuf: null,
-            init() {
-                try {
-                    if (!this.ac) {
-                        const AC = window.AudioContext || window.webkitAudioContext;
-                        if (!AC) return;
-                        this.ac = new AC();
-                        this.master = this.ac.createGain();
-                        this.master.gain.value = 0.6;
-                        this.master.connect(this.ac.destination);
-                    }
-                    if (this.ac.state === 'suspended') this.ac.resume();
-                } catch (e) { this.ac = null; }
-            },
-            ok() { return this.ac && !look.muted; },
-            tone(f, dur, type = 'sine', vol = 0.15, f2 = null, delay = 0) {
-                if (!this.ok()) return;
-                const t = this.ac.currentTime + delay;
-                const o = this.ac.createOscillator();
-                const g = this.ac.createGain();
-                o.type = type;
-                o.frequency.setValueAtTime(f, t);
-                if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
-                g.gain.setValueAtTime(0.0001, t);
-                g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
-                g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-                o.connect(g); g.connect(this.master);
-                o.start(t); o.stop(t + dur + 0.03);
-            },
-            noise(dur, vol = 0.2, freq = 1000, q = 1, delay = 0) {
-                if (!this.ok()) return;
-                if (!this.nbuf) {
-                    const len = this.ac.sampleRate * 2;
-                    this.nbuf = this.ac.createBuffer(1, len, this.ac.sampleRate);
-                    const d = this.nbuf.getChannelData(0);
-                    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-                }
-                const t = this.ac.currentTime + delay;
-                const s = this.ac.createBufferSource();
-                s.buffer = this.nbuf;
-                const fl = this.ac.createBiquadFilter();
-                fl.type = 'bandpass'; fl.frequency.value = freq; fl.Q.value = q;
-                const g = this.ac.createGain();
-                g.gain.setValueAtTime(vol, t);
-                g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-                s.connect(fl); fl.connect(g); g.connect(this.master);
-                s.start(t); s.stop(t + dur + 0.03);
-            },
-            jump(c)   { this.tone(200 + c * 120, 0.2 + c * 0.15, 'triangle', 0.08 + c * 0.06, 500 + c * 700); if (c > 0.95) this.noise(0.3, 0.12, 700, 0.7); },
-            charged() { this.tone(1320, 0.12, 'sine', 0.07); this.tone(1760, 0.16, 'sine', 0.06, null, 0.06); },
-            click()   { this.tone(660, 0.05, 'square', 0.035); },
+        // The synth is in shared/common.js; the hub's own sounds:
+        Sound.isMuted = () => look.muted;
+        Object.assign(Sound, {
             arrive()  { this.tone(523, 0.12, 'triangle', 0.08); this.tone(784, 0.16, 'triangle', 0.08, null, 0.08); },
             portal()  { this.noise(0.5, 0.18, 900, 0.6); [392, 523, 659, 784].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.08, null, i * 0.06)); }
-        };
+        });
 
         // =====================================================================
         //  PLAYER (local physics: the games' charge jump + volleyball movement)
@@ -509,42 +336,8 @@
         const peers = new Map();   // id -> { name, team, cos, st, x, y, vx, vy, angle, charge, hold, face, rx, ry, ra, at, seen }
         let myRoom = null;         // the room we're in, as reported by the game: { g, code, host, n, seated, max, inMatch, active }
 
-        // Same-browser stand-in for a Supabase channel (used with ?nettest): one BroadcastChannel per topic
-        class LocalChannel {
-            constructor(topic) {
-                this.bc = new BroadcastChannel('wobbly-hub:' + topic);
-                this.h = { broadcast: {}, presence: {} };
-                this.state = {};
-                this.me = null;
-                this.bc.onmessage = (e) => this.recv(e.data);
-            }
-            on(type, filter, cb) { (this.h[type][filter.event] = this.h[type][filter.event] || []).push(cb); return this; }
-            fire(type, ev, arg) { (this.h[type][ev] || []).forEach(f => f(arg)); }
-            subscribe(cb) { setTimeout(() => cb && cb('SUBSCRIBED'), 30); return this; }
-            async track(meta) {
-                this.me = meta; this.state[net.id] = [meta];
-                this.bc.postMessage({ k: 'join', id: net.id, meta, hello: true });
-                this.fire('presence', 'sync');
-                return 'ok';
-            }
-            presenceState() { return this.state; }
-            async send(m) { this.bc.postMessage({ k: 'b', event: m.event, payload: m.payload }); return 'ok'; }
-            async unsubscribe() { try { if (this.me) this.bc.postMessage({ k: 'leave', id: net.id }); this.bc.close(); } catch (e) { /* closed */ } return 'ok'; }
-            recv(d) {
-                if (d.k === 'b') this.fire('broadcast', d.event, { event: d.event, payload: d.payload });
-                else if (d.k === 'join') {
-                    this.state[d.id] = [d.meta];
-                    if (d.hello && this.me) this.bc.postMessage({ k: 'join', id: net.id, meta: this.me });
-                    this.fire('presence', 'sync');
-                } else if (d.k === 'leave') {
-                    delete this.state[d.id];
-                    this.fire('presence', 'sync');
-                }
-            }
-        }
-
         function chan(topic, presenceKey) {
-            if (LOCAL_TEST) return new LocalChannel(topic);
+            if (LOCAL_TEST) return new LocalChannel(topic, () => net.id, 'wobbly-hub:');   // shared/common.js
             const config = { private: true, broadcast: { self: false, ack: false } };
             if (presenceKey) config.presence = { key: presenceKey };
             return net.client.channel(topic, { config });
@@ -564,19 +357,29 @@
             $('online-text').textContent = n === 1 ? 'Just you in the hub' : `${n} in the hub`;
         }
 
+        // Offline or dropped: try again after 5, 15, then every 30 seconds (and at once when the browser is back online)
+        let retries = 0, retryTimer = 0;
+        function retryConnect() {
+            clearTimeout(retryTimer);
+            retryTimer = setTimeout(connect, [5000, 15000][retries++] || 30000);
+        }
+        window.addEventListener('online', () => { if (entered && !net.lobby) { retries = 0; connect(); } });
         async function connect() {
             if (net.connecting || net.lobby) return;
+            clearTimeout(retryTimer);
             net.connecting = true;
             setOnline(false, 'Connecting…');
             try {
-                await Account.ready;
+                if (!Account.id) await Account.retry();
                 if (!Account.id) throw new Error((Account.error || 'Could not sign in, so you are offline.') + ' You can still walk around and join games.');
                 net.client = Account.client;
                 net.id = Account.id;
             } catch (err) {
                 net.connecting = false;
-                setOnline(false, 'Offline');
-                toast(err.message || 'Could not connect. You can still walk around and join games.', true);
+                setOnline(false, 'Offline · retrying');
+                if (!retries) toast(err.message || 'Could not connect. You can still walk around and join games.', true);
+                showAccount();
+                retryConnect();
                 return;
             }
             // Our own line: only we can send on it, so everything on it is verified as ours
@@ -588,19 +391,24 @@
             net.lobby = chan(`hub:${HUB_WORLD}`, net.id)
                 .on('presence', { event: 'sync' }, syncPeers);
             let joined = false;
-            net.lobby.subscribe(async (st) => {
-                if (st === 'SUBSCRIBED' && !joined) {
-                    joined = true;
+            const lobby = net.lobby;
+            lobby.subscribe(async (st) => {
+                if (lobby !== net.lobby) return;
+                if (st === 'SUBSCRIBED') {   // also after Supabase rejoins by itself following a drop
+                    joined = true; retries = 0;
                     net.connecting = false;
-                    try { await net.lobby.track({ t: Date.now() }); } catch (e) { /* retried by Supabase */ }
+                    try { await lobby.track({ t: Date.now() }); } catch (e) { /* retried by Supabase */ }
                     setOnline(true, 'Just you in the hub');
                     updateOnlineText();
-                } else if (!joined && (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT')) {
+                } else if (joined) {
+                    setOnline(false, 'Reconnecting…');   // Supabase keeps rejoining the channel
+                } else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') {
                     net.connecting = false;
                     dropChan(net.lobby); dropChan(net.mine);
                     net.lobby = null; net.mine = null; net.mineReady = false;
-                    setOnline(false, 'Offline');
-                    toast('Could not join the hub. Is the hub migration applied? You can still walk around and join games.', true);
+                    setOnline(false, 'Offline · retrying');
+                    if (!retries) toast('Could not join the hub. Is the hub migration applied? You can still walk around and join games.', true);
+                    retryConnect();
                 }
             });
         }
@@ -744,7 +552,7 @@
             joinArea(area, m);
         }
         async function joinQueue(area, pad) {
-            if (queue) return;
+            if (queue) { toast('Already searching. Esc or Cancel to stop.'); return; }
             await Account.ready;
             if (!Account.id || !(Account.LOCAL || Account.hasProfile())) { toast('Matchmaking needs an account. Check your connection and name, or play CPU / LOCAL.', true); return; }
             queue = { area, pad, at: Date.now() };
@@ -758,7 +566,13 @@
             if (!playing) return;
             playing = null;
             myRoom = null;
-            if (ranked) { ranked = false; setTimeout(() => Account.refresh().then(showAccount), 1500); }   // the host has reported the result by now
+            if (ranked) {
+                ranked = false;
+                setTimeout(() => Account.refresh().then(() => {   // our report is in by now (both teams agreeing settles it at once)
+                    showAccount();
+                    if (Account.needsBackup() && !backupNudged) { backupNudged = true; toast('Your rating lives in this browser only: save your account (👕) to keep it.'); }
+                }, () => {}), 1500);
+            }
             playWrap.classList.remove('on');
             playFrame.src = 'about:blank';
             sendMeta();
@@ -779,7 +593,18 @@
                 closeGame(String(m.msg || '').slice(0, 120));
             }
         });
-        $('back-btn').addEventListener('click', () => closeGame('Back in the hub'));
+        // Leaving a ranked match forfeits it: ask with a second click
+        let backBtnArmed = 0, backupNudged = false;
+        $('back-btn').addEventListener('click', (e) => {
+            const b = e.currentTarget;
+            if (ranked && !backBtnArmed) {
+                b.textContent = 'LEAVE MATCH?';
+                backBtnArmed = setTimeout(() => { backBtnArmed = 0; b.textContent = '✕ HUB'; }, 3000);
+                return;
+            }
+            clearTimeout(backBtnArmed); backBtnArmed = 0; b.textContent = '✕ HUB';
+            closeGame('Back in the hub');
+        });
 
         // =====================================================================
         //  INPUT
@@ -792,6 +617,7 @@
             keys[e.code] = true;
             if (!e.repeat) {
                 if (e.code === 'KeyM') { toggleMute(); return; }
+                if (e.code === 'Escape') { if (queue) cancelQueue(); else if (entered && !entryScreen.classList.contains('hidden')) enterHub(); return; }
                 if (e.code === 'Enter' && !entryScreen.classList.contains('hidden')) { enterHub(); return; }
                 if (e.code === 'KeyW' || e.code === 'ArrowUp' || e.code === 'Space') { Sound.init(); pressJump(); }
             }
@@ -846,14 +672,6 @@
         // =====================================================================
         //  RENDERING
         // =====================================================================
-        function mulberry32(a) {
-            return function () {
-                a |= 0; a = (a + 0x6D2B79F5) | 0;
-                let t = Math.imul(a ^ (a >>> 15), 1 | a);
-                t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-                return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-            };
-        }
         let renderScale = 1, bgScale = 1, camX = SPAWN_X - W / 2;
         const bgCanvas = document.createElement('canvas');
 
@@ -993,49 +811,8 @@
             g.textAlign = 'center';
         }
 
-        // ---------- Players (same drawing as the games: every layer comes from the cosmetics registry) ----------
-        const cosCtx = { r: 32, t: 0, look: 1, team: '', teamNum: 1, hat: null, zoom: 1 };
-        function drawBlob(g, x, y, angle, charge, hold, face, team, cos, lookAt, t) {
-            const r = R;
-            const skin = Cosmetics.get('skin', cos[0]);
-            const hat = Cosmetics.get('hat', cos[1]);
-            const c = cosCtx;
-            g.save();
-            g.translate(x, y);
-            c.r = r; c.t = t; c.look = face; c.team = TEAM[team]; c.teamNum = team; c.hat = hat;
-            c.zoom = Cosmetics.zoomOf(g);
-            g.rotate(angle);
-            const k = charge / MAX_CHARGE, hk = hold * 0.5;
-            g.scale(1 + k * 0.15 + hk * 0.1, 1 - k * 0.35 - hk * 0.15);
-            if (charge === MAX_CHARGE && Math.floor(Date.now() / 50) % 2 === 0) { g.shadowBlur = 20; g.shadowColor = '#f1c40f'; }
-            Cosmetics.draw('skin', 'body', g, skin, c);
-            g.shadowBlur = 0;
-            Cosmetics.draw('skin', 'extras', g, skin, c);
-            Cosmetics.draw('boots', 'main', g, Cosmetics.get('boots', cos[2]), c);
-            Cosmetics.draw('hat', 'main', g, hat, c);
-            const ex = r * 0.4 * face, ey = -r * 0.4;
-            g.fillStyle = '#ffffff';
-            g.beginPath(); g.arc(ex, ey, 8, 0, Math.PI * 2); g.fill();
-            let px = r * 0.45 * face, py = ey;
-            if (lookAt) {
-                const a = Math.atan2(lookAt.y - y, lookAt.x - x) - angle;
-                px = ex + Math.cos(a) * 3.5; py = ey + Math.sin(a) * 3.5;
-            }
-            g.fillStyle = '#000000';
-            g.beginPath(); g.arc(px, py, 4, 0, Math.PI * 2); g.fill();
-            Cosmetics.draw('acc', 'main', g, Cosmetics.get('acc', cos[3]), c);
-            const lift = Cosmetics.hatLift(hat, r);
-            const ring = (frac, col) => {
-                g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = 6;
-                g.beginPath(); g.arc(0, -r * 1.5 - lift, 15, 0, Math.PI * 2); g.stroke();
-                g.strokeStyle = col; g.lineWidth = 4;
-                g.beginPath(); g.arc(0, -r * 1.5 - lift, 15, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); g.stroke();
-            };
-            if (charge > 5) ring(k, '#f1c40f');
-            else if (hold > 0) ring(hold, '#ffffff');
-            g.restore();
-            return lift;
-        }
+        // ---------- Players (drawBlob in shared/common.js, the same drawing as the games) ----------
+        const blob = (g, x, y, angle, charge, hold, face, team, cos, lookAt, t) => drawBlob(g, { x, y, r: R, angle, charge: charge / MAX_CHARGE, sx: hold * 0.05, sy: hold * 0.075, face, team, cos, lookAt, t, ring: hold });
         function nameTag(x, y, lift, text, col, sub) {
             const ty = Math.max(16, y - R * 2.2 - lift);
             ctx.font = '800 13px Segoe UI, Roboto, sans-serif';
@@ -1127,12 +904,12 @@
                 if (!q.name || q.rx === null || q.rx < camX - 80 || q.rx > camX + W + 80) continue;
                 const inGame = q.st && q.st.g;
                 if (inGame) ctx.globalAlpha = 0.65;
-                const lift = drawBlob(ctx, q.rx, q.ry, q.ra, q.charge, q.hold, q.face, q.team, q.cos, me, t);
+                const lift = blob(ctx, q.rx, q.ry, q.ra, q.charge, q.hold, q.face, q.team, q.cos, me, t);
                 ctx.globalAlpha = 1;
                 const area = inGame ? AREAS.find(a => a.id === q.st.g) : null;
                 nameTag(q.rx, q.ry, lift, q.name, '#ffffff', area ? `PLAYING ${area.title[1]}${q.st.code ? ' · ' + q.st.code : ''}` : '');
             }
-            const lift = drawBlob(ctx, me.x, me.y, me.angle, me.charge, me.hold / HOLD_FRAMES, me.face, look.team, [look.skin, look.hat, look.boots, look.acc], null, t);
+            const lift = blob(ctx, me.x, me.y, me.angle, me.charge, me.hold / HOLD_FRAMES, me.face, look.team, [look.skin, look.hat, look.boots, look.acc], null, t);
             nameTag(me.x, me.y, lift, (look.name || 'Player') + ' (you)', TEAM[look.team], '');
             // Particles
             for (const p of particles) {
@@ -1169,7 +946,7 @@
             g.clearRect(0, 0, 160, 160);
             g.fillStyle = 'rgba(0,0,0,0.3)';
             g.beginPath(); g.ellipse(80, 102 + 32 * 1.7 + 2, 30, 4, 0, 0, Math.PI * 2); g.fill();
-            drawBlob(g, 80, 102, Math.sin(t * 0.003) * 0.12, 0, 0, 1, look.team, [look.skin, look.hat, look.boots, look.acc], null, t);
+            blob(g, 80, 102, Math.sin(t * 0.003) * 0.12, 0, 0, 1, look.team, [look.skin, look.hat, look.boots, look.acc], null, t);
         }
         function refreshEntry() {
             document.querySelectorAll('#entry-screen .picker').forEach(pk => {
@@ -1208,7 +985,8 @@
         emailAction($('save-acct'), Account.saveEmail, 'Check your email to confirm. Then you can sign in on other devices.');
         emailAction($('signin-acct'), Account.signInEmail, 'Check your email for the sign-in link.');
         Account.ready.then(() => {
-            if ($('name-input').value === look.name) { pullLook(); $('name-input').value = look.name; } else pullLook();
+            pullLook();
+            if (!nameTyped && look.name) $('name-input').value = look.name;
             refreshEntry(); showAccount();
         });
 
@@ -1219,7 +997,7 @@
             Sound.init(); Sound.click();
             $msg('Saving…');
             await Account.ready;
-            const r = await Account.saveName(cleanName($('name-input').value) || look.name || 'Player');
+            const r = await Account.saveName(cleanName($('name-input').value) || look.name || 'Player' + (1000 + Math.floor(Math.random() * 9000)));
             entering = false;
             if (r.error) { $msg(r.error); return; }
             $msg('');
@@ -1295,7 +1073,10 @@
             requestAnimationFrame(frame);
         }
 
-        $('name-input').value = look.name;
+        // A new player gets a numbered name, so two people who just press Enter do not both ask for "Player"
+        $('name-input').value = look.name || 'Player' + (1000 + Math.floor(Math.random() * 9000));
+        let nameTyped = false;
+        $('name-input').addEventListener('input', () => { nameTyped = true; });
         showAccount();
         camX = Math.max(0, Math.min(WORLD_W - W, me.x - W / 2));
         fit();

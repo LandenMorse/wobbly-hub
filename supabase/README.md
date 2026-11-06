@@ -11,6 +11,7 @@ Rooms use **Supabase Auth (anonymous sign-ins)** and **private Realtime channels
    - `20261104000100_rooms_cleanup_cron.sql`: optional; expires rooms older than 6 hours (needs `pg_cron`).
    - `20261107000000_accounts_queue_elo.sql`: accounts, matchmaking and Elo (below).
    - `20261108000000_queue_vs_bots.sql`: the 2v2 vs bots queue (`join_queue(game, 2, true)`: both players on team 1, bots fill the other seats in the game; `report_result` closes it without rating changes).
+   - `20261109000000_trust_queue_heartbeat.sql`: results both teams confirm, and a queue heartbeat (below). Ship the matching `shared/account.js` and `shared/net.js` with it: older pages never poll, so the queue stops matching them 20 s after they join.
 3. **Realtime settings → Allow public access: off**, so only private, authorised channels work.
 
 ## Channel layout
@@ -37,7 +38,7 @@ The host listens on one `g:<uid>` topic per guest, so the sender of every input 
 | `queue` | nobody | nobody; only the functions |
 | `matches` (room code, host, players with teams, status) | its players (in the `supabase_realtime` publication, so waiting players learn their match) | nobody |
 
-Functions (security definer, signed-in users only): `join_queue(game, size)` returns the new match (or null while waiting; size 2 or 4; 2v2 teams are balanced by Elo; creates the `rooms` row, the oldest waiting player hosts), `leave_queue()`, `report_result(match, winner)` (host only, once; Elo K=32 on team averages, closes the room). Stale queue rows (10 min) and unreported matches (a match counts as live for 15 minutes, `wobbly_match_ttl()`; closed without rating changes) are cleaned by the `wobbly-expire-queue` cron job (installed only where `pg_cron` exists).
+Functions (security definer, signed-in users only): `join_queue(game, size)` returns the new match (or null while waiting; size 2 or 4; 2v2 teams are balanced by Elo; creates the `rooms` row, the oldest waiting player hosts), `poll_queue()` (the waiting page calls it every 5 s: only waiters heard from in the last 20 s are matched, and it returns a match whose Realtime message was missed), `leave_queue()`, `report_result(match, winner)` (every player of the match, once each: both teams naming the same winner settles it at once, Elo K=32 on team averages, and closes the room; teams that disagree make it `void`, no rating change; a report the other team does not answer within a minute counts, settled by the `wobbly-settle-reports` cron job and on every `join_queue`). Queue rows not heard from for a minute and matches still live after 30 minutes (`wobbly_match_ttl()`; made `void`) are cleaned by the `wobbly-expire-queue` cron job (installed only where `pg_cron` exists).
 
 ## Tests
 

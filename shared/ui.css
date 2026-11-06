@@ -1,0 +1,113 @@
+/* Styles the hub (index.html) and the game page (play.html) share. Each page keeps its own <style> after this. */
+:root {
+    --bg-dark: #121214;
+    --neon-blue: #00d2ff;
+    --neon-red: #ff3838;
+    --gold: #f1c40f;
+    --card-bg: rgba(255, 255, 255, 0.07);
+}
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+html, body { height: 100%; }
+body {
+    background: radial-gradient(circle at 50% 30%, #1d1d24, var(--bg-dark) 70%);
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+button { font: inherit; border: none; cursor: pointer; outline: none; }
+/* Keyboard users see where they are (mouse clicks show no ring) */
+button:focus-visible, input:focus-visible, .chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+#game-container {
+    position: relative;
+    flex: none;
+    width: 1024px;
+    height: 576px;
+    border-radius: 12px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    background: #1e272e;
+    transform-origin: center center;
+    touch-action: none;
+    overflow: hidden;
+}
+/* ---------- Overlays ---------- */
+.overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(12, 16, 20, 0.86);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 10;
+    border-radius: 12px;
+    transition: opacity 0.25s ease;
+}
+.overlay.hidden { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity 0.25s ease, visibility 0s 0.25s; }   /* hidden: not a Tab stop either */
+.game-title {
+    font-size: 3rem;
+    font-weight: 900;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    line-height: 1;
+    text-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
+}
+.game-title span { color: var(--gold); }
+.card { background: var(--card-bg); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; }
+.hide { display: none !important; }
+.picker { display: flex; align-items: center; gap: 6px; width: 100%; }
+.arrow:hover { background: rgba(255, 255, 255, 0.22); }
+.big-btn {
+    padding: 0.8rem 3.2rem;
+    font-size: 1.3rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    background: var(--gold);
+    color: #000;
+    border-radius: 50px;
+    box-shadow: 0 10px 25px rgba(241, 196, 15, 0.35);
+    transition: transform 0.1s;
+}
+.big-btn:hover { transform: translateY(-2px); }
+.keys b {
+    display: inline-block; background: #fff; color: #000; border-radius: 4px;
+    padding: 0 5px; font-size: 0.7rem; line-height: 1.4; box-shadow: 0 2px 0 #bdc3c7;
+}
+.icon-btn {
+    position: absolute; top: 18px; z-index: 6;
+    width: 40px; height: 40px; border-radius: 12px;
+    background: rgba(0, 0, 0, 0.5); color: #fff; font-size: 0.95rem;
+}
+/* ---------- Touch controls ---------- */
+#touch-controls { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
+#touch-controls.off { display: none; }
+.tc-cluster { position: absolute; bottom: 12px; display: flex; gap: 12px; align-items: flex-end; }
+.tc-btn {
+    pointer-events: auto; touch-action: none;
+    width: 76px; height: 76px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14); border: 2px solid rgba(255, 255, 255, 0.3);
+    color: #fff; font-size: 1.5rem; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+}
+.tc-btn.on { background: rgba(255, 255, 255, 0.38); }
+#rotate-hint {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: var(--bg-dark); color: #fff;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; font-size: 1.1rem; text-align: center; padding: 2rem;
+}
+#rotate-hint .big { font-size: 3rem; }
+@media (orientation: portrait) and (pointer: coarse) {
+    #rotate-hint { display: flex; }
+}

@@ -52,7 +52,6 @@ const CONFIG = {
     jumpScale: 1,            // x the jump force
     ...G.config
 };
-const TEAM = { 1: '#00d2ff', 2: '#ff3838' };
 
 const OPPONENTS = [
     { id: 'human',  name: '2 Players' },
@@ -152,72 +151,23 @@ const net = {
     inputs: {}, inSeqs: {}, inSeq: 0, local: { l: false, r: false, j: false, d: false }, touch: { j: false, d: false },
     rtc: null, rtcs: {}, rtcTries: 0,
     snaps: [], renderT: -1, appliedT: -1, latestT: -1, latestAt: 0,
-    fx: [], sndDepth: 0
+    fx: [], fxOut: [], fxN: 0, fxSeen: 0, sndDepth: 0, away: {}
 };
 
 // =====================================================================
 //  SOUND (WebAudio synth, no assets)
 // =====================================================================
-const Sound = {
-    ac: null, master: null, nbuf: null,
-    init() {
-        try {
-            if (!this.ac) {
-                const AC = window.AudioContext || window.webkitAudioContext;
-                if (!AC) return;
-                this.ac = new AC();
-                this.master = this.ac.createGain();
-                this.master.gain.value = 0.6;
-                this.master.connect(this.ac.destination);
-            }
-            if (this.ac.state === 'suspended') this.ac.resume();
-        } catch (e) { this.ac = null; }
-    },
-    ok() { return this.ac && !settings.muted; },
-    tone(f, dur, type = 'sine', vol = 0.15, f2 = null, delay = 0) {
-        if (!this.ok()) return;
-        const t = this.ac.currentTime + delay;
-        const o = this.ac.createOscillator();
-        const g = this.ac.createGain();
-        o.type = type;
-        o.frequency.setValueAtTime(f, t);
-        if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        o.connect(g); g.connect(this.master);
-        o.start(t); o.stop(t + dur + 0.03);
-    },
-    noise(dur, vol = 0.2, freq = 1000, q = 1, delay = 0) {
-        if (!this.ok()) return;
-        if (!this.nbuf) {
-            const len = this.ac.sampleRate * 2;
-            this.nbuf = this.ac.createBuffer(1, len, this.ac.sampleRate);
-            const d = this.nbuf.getChannelData(0);
-            for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-        }
-        const t = this.ac.currentTime + delay;
-        const s = this.ac.createBufferSource();
-        s.buffer = this.nbuf;
-        const fl = this.ac.createBiquadFilter();
-        fl.type = 'bandpass'; fl.frequency.value = freq; fl.Q.value = q;
-        const g = this.ac.createGain();
-        g.gain.setValueAtTime(vol, t);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        s.connect(fl); fl.connect(g); g.connect(this.master);
-        s.start(t); s.stop(t + dur + 0.03);
-    },
+// The synth and the shared voices are in shared/common.js; these are the games' own
+Sound.isMuted = () => settings.muted;
+Object.assign(Sound, {
     kick(v)   { const p = Math.min(1, v / 12); this.tone(160, 0.12, 'sine', 0.15 + p * 0.35, 45); this.noise(0.05, 0.08 + p * 0.2, 2500, 0.8); },
     bounce(v) { const p = Math.min(1, v / 12); this.tone(110, 0.09, 'sine', 0.04 + p * 0.18, 55); },
     bump()    { this.tone(85, 0.12, 'sine', 0.18, 40); },
-    jump(c)   { this.tone(200 + c * 120, 0.2 + c * 0.15, 'triangle', 0.08 + c * 0.06, 500 + c * 700); if (c > 0.95) this.noise(0.3, 0.12, 700, 0.7); },
-    charged() { this.tone(1320, 0.12, 'sine', 0.07); this.tone(1760, 0.16, 'sine', 0.06, null, 0.06); },
     beep(hi)  { this.tone(hi ? 1046 : 523, 0.14, 'square', 0.05); },
     whistle() { this.tone(2350, 0.14, 'sine', 0.12); this.tone(2350, 0.4, 'sine', 0.12, 2200, 0.17); },
-    click()   { this.tone(660, 0.05, 'square', 0.035); },
     goal()    { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.25, 'square', 0.06, null, i * 0.09)); this.noise(1.6, 0.22, 1200, 0.5, 0.05); },
     fanfare() { [523, 659, 784, 1046, 784, 1046].forEach((f, i) => this.tone(f, 0.32, 'triangle', 0.12, null, i * 0.13)); this.noise(2.2, 0.18, 1000, 0.5); }
-};
+});
 Object.assign(Sound, G.sounds);   // the game's own sounds
 
 // =====================================================================
@@ -755,11 +705,40 @@ class Bot {
         const onGround = p.y + p.radius >= CONFIG.groundY - 2;
         if (!onGround || !controlsLive()) return;
         if (this.cooldown > 0) { this.cooldown--; return; }
+        if (planTick === tickCount) return;   // one look-ahead plan per step: in 2v2 the other bots plan on the next ones
+        planTick = tickCount;
         G.ai.plan(this, L);
     }
 }
-let bots = [];
-const AI = { reset() { for (const b of bots) b.reset(); } };
+let bots = [], planTick = -1;
+// Helpers both games' plans use (G.ai.plan)
+const AI = {
+    reset() { for (const b of bots) b.reset(); },
+    // Copy the world into the sim actors: returns { me, b, os } (os: everyone else)
+    setup(p, ball) {
+        const me = sim.me, b = sim.ball, os = [];
+        copyActor(me, p); copyActor(b, ball);
+        for (const q of players) if (q !== p) { const o = sim.others[os.length]; copyActor(o, q); os.push(o); }
+        return { me, b, os };
+    },
+    // The ball with the lowest score(ball)
+    focus(score) {
+        let ball = balls[0], best = Infinity;
+        for (const bl of balls) { const s = score(bl); if (s < best) { best = s; ball = bl; } }
+        return ball;
+    },
+    // In 2v2, whoever is further from the ball plays support
+    support(p, ball) {
+        const myD = Math.hypot(ball.x - p.x, ball.y - p.y);
+        return players.some(q => q !== p && q.playerNum === p.playerNum && Math.hypot(ball.x - q.x, ball.y - q.y) < myD - 20);
+    },
+    // Now and then a bot just does something random (L.blunder); true when it did
+    blunder(bot, L) {
+        if (Math.random() >= L.blunder) return false;
+        bot.start([-1, 0, 1][(Math.random() * 3) | 0], L.charges[(Math.random() * L.charges.length) | 0]);
+        return true;
+    }
+};
 
 // =====================================================================
 //  EFFECTS
@@ -1056,9 +1035,13 @@ function physicsStep() {
 }
 
 function tick() {
+    // Where everything was before this step: render() draws between the two (renderAlpha), so motion is smooth at any refresh rate
+    for (const a of players) { a.px = a.x; a.py = a.y; }
+    for (const b of balls) { b.px = b.x; b.py = b.y; }
+    pcamX = camX;
     if (isGuest()) { guestTick(); return; }
     tickSim();
-    if (net.rec && tickCount % SNAP_EVERY === 0 && (state !== 'GAMEOVER' || net.fx.length || tickCount % 60 === 0)) netSendSnap();
+    if (net.rec && tickCount % SNAP_EVERY === 0 && (state !== 'GAMEOVER' || net.fx.length || net.fxOut.length || tickCount % 60 === 0)) netSendSnap();
 }
 
 function tickSim() {

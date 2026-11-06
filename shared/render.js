@@ -4,20 +4,11 @@
 // =====================================================================
 //  RENDERING
 // =====================================================================
-function mulberry32(a) {
-    return function () {
-        a |= 0; a = (a + 0x6D2B79F5) | 0;
-        let t = Math.imul(a ^ (a >>> 15), 1 | a);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
-
 let renderScale = 1, bgScale = 1;
 const bgCanvas = document.createElement('canvas');
 
 // ---------- Camera (long field) ----------
-let camX = 0;
+let camX = 0, pcamX = 0;   // pcamX: camX one step ago (see tick)
 function updateCamera(snap) {
     const FW = CONFIG.fieldW;
     if (FW <= W) { camX = 0; return; }
@@ -158,64 +149,14 @@ function buildBackground() {
     G.draw.field(g, A, FW, GY);   // the game's goals / net / court lines
 }
 
-// ---------- Player drawing ----------
-// Every cosmetic layer is drawn by the registry (shared/cosmetics/registry.js), which caches static items as sprites.
-const cosCtx = { r: 32, t: 0, look: 1, team: '', teamNum: 1, hat: null, zoom: 1 };
+// ---------- Player drawing (drawBlob in shared/common.js) ----------
+const blobOpts = { x: 0, y: 0, r: 32, angle: 0, charge: 0, sx: 0, sy: 0, face: 1, team: 1, cos: [], lookAt: null, t: 0, ring: 0 };
 function drawPlayer(g, p, skinId, hatId, bootId, accId, lookAt, t) {
-    const r = p.radius;
-    const skin = Cosmetics.get('skin', skinId);
-    const hat = Cosmetics.get('hat', hatId);
-    const c = cosCtx;
-    g.save();
-    g.translate(p.x, p.y);
-    c.r = r; c.t = t; c.look = p.playerNum === 1 ? 1 : -1; c.team = TEAM[p.playerNum]; c.teamNum = p.playerNum; c.hat = hat;
-    c.zoom = Cosmetics.zoomOf(g);
-    g.rotate(p.angle);
-
-    // Squash & stretch with charge (unchanged)
-    const chargeRatio = p.chargeAmount / p.maxCharge;
-    const digK = ACT.squash?.(p) || 0;   // the game's action squashes the body
-    g.scale(1.0 + chargeRatio * 0.15 + digK * 0.12, 1.0 - chargeRatio * 0.35 - digK * 0.22);
-
-    if (p.chargeAmount === p.maxCharge && Math.floor(Date.now() / 50) % 2 === 0) {
-        g.shadowBlur = 20;
-        g.shadowColor = '#f1c40f';
-    }
-    Cosmetics.draw('skin', 'body', g, skin, c);
-    g.shadowBlur = 0;
-    Cosmetics.draw('skin', 'extras', g, skin, c);
-    Cosmetics.draw('boots', 'main', g, Cosmetics.get('boots', bootId), c);
-    Cosmetics.draw('hat', 'main', g, hat, c);
-
-    // Eyes (pupils follow the ball)
-    const look = c.look;
-    const ex = r * 0.4 * look, ey = -r * 0.4;
-    g.fillStyle = '#ffffff';
-    g.beginPath(); g.arc(ex, ey, 8, 0, Math.PI * 2); g.fill();
-    let px = r * 0.45 * look, py = ey;
-    if (lookAt) {
-        const a = Math.atan2(lookAt.y - p.y, lookAt.x - p.x) - p.angle;
-        px = ex + Math.cos(a) * 3.5;
-        py = ey + Math.sin(a) * 3.5;
-    }
-    g.fillStyle = '#000000';
-    g.beginPath(); g.arc(px, py, 4, 0, Math.PI * 2); g.fill();
-
-    Cosmetics.draw('acc', 'main', g, Cosmetics.get('acc', accId), c);
-
-    // Charge meter arc above head (unchanged look, lifted above hats)
-    if (p.chargeAmount > 5) {
-        const lift = Cosmetics.hatLift(hat, r);
-        g.strokeStyle = 'rgba(0,0,0,0.35)';
-        g.lineWidth = 6;
-        g.beginPath(); g.arc(0, -r * 1.5 - lift, 15, 0, Math.PI * 2); g.stroke();
-        g.strokeStyle = '#f1c40f';
-        g.lineWidth = 4;
-        g.beginPath();
-        g.arc(0, -r * 1.5 - lift, 15, -Math.PI / 2, (-Math.PI / 2) + (Math.PI * 2 * chargeRatio));
-        g.stroke();
-    }
-    g.restore();
+    const o = blobOpts, digK = ACT.squash?.(p) || 0;   // the game's action squashes the body
+    o.x = p.x; o.y = p.y; o.r = p.radius; o.angle = p.angle; o.charge = p.chargeAmount / p.maxCharge;
+    o.sx = digK * 0.12; o.sy = digK * 0.22; o.team = p.playerNum; o.face = p.playerNum === 1 ? 1 : -1;
+    o.cos = [skinId, hatId, bootId, accId]; o.lookAt = lookAt; o.t = t;
+    drawBlob(g, o);
 }
 
 // ---------- Ball drawing ----------
@@ -231,7 +172,7 @@ function drawBall(g, b, ballId, t = 0) {
 
 function drawShadows() {
     ctx.fillStyle = 'rgba(0,0,0,1)';
-    for (const a of [...players, ...balls]) {
+    for (const list of [players, balls]) for (const a of list) {
         const h = CONFIG.groundY - (a.y + a.radius);
         const alpha = Math.max(0, 0.32 - h / 900);
         if (alpha <= 0) continue;
@@ -284,7 +225,7 @@ function drawMarkers() {
 }
 
 function drawOffscreen() {
-    for (const a of [...balls, ...players]) {
+    for (const list of [balls, players]) for (const a of list) {
         if (a.y + a.radius >= 0) continue;
         const x = Math.max(camX + 16, Math.min(camX + W - 16, a.x));
         ctx.fillStyle = a.isPlayer ? TEAM[a.playerNum] : '#ffffff';
@@ -296,7 +237,7 @@ function drawOffscreen() {
 
 function drawSideArrows() {
     if (CONFIG.fieldW <= W) return;
-    for (const a of [...players, ...balls]) {
+    for (const list of [players, balls]) for (const a of list) {
         const sx = a.x - camX;
         if (sx > -a.radius && sx < W + a.radius) continue;
         const left = sx < 0;
@@ -370,7 +311,25 @@ function nearestBall(p) {
     return best;
 }
 
+// Draw players, balls and the camera between their last two steps (positions from tick(), renderAlpha from main.js).
+// A jump of over 80 px is a teleport (kickoff, respawn) and is drawn where it lands.
+const lerpSaved = [];
 function render(t) {
+    const k = renderAlpha;
+    lerpSaved.length = 0;
+    for (const list of [players, balls]) for (const a of list) {
+        if (a.px === undefined || Math.abs(a.x - a.px) + Math.abs(a.y - a.py) > 80) continue;
+        lerpSaved.push(a, a.x, a.y);
+        a.x = a.px + (a.x - a.px) * k; a.y = a.py + (a.y - a.py) * k;
+    }
+    const realCam = camX;
+    camX = pcamX + (camX - pcamX) * k;
+    try { renderFrame(t); } finally {
+        for (let i = 0; i < lerpSaved.length; i += 3) { lerpSaved[i].x = lerpSaved[i + 1]; lerpSaved[i].y = lerpSaved[i + 2]; }
+        camX = realCam;
+    }
+}
+function renderFrame(t) {
     ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     ctx.clearRect(0, 0, W, H);
     ctx.save();
@@ -383,7 +342,6 @@ function render(t) {
         drawShadows();
         drawTrails();
         for (const p of players) {
-            const n = p.playerNum;
             drawPlayer(ctx, p, skinOf(p), hatOf(p), bootsOf(p), accOf(p), nearestBall(p), t);
         }
         for (const b of balls) drawBall(ctx, b, settings.ball, t);
@@ -410,6 +368,7 @@ const prevActors = {
 const prevBall = { x: 15, y: 15, radius: 12, spin: 0 };
 
 function drawPreviews(t) {
+    if (menuScreen.classList.contains('hidden')) return;   // the online screen or the cosmetics browser covers them
     for (const n of [1, 2]) {
         const g = previewCtx[n];
         const P = prevActors[n];
@@ -627,7 +586,7 @@ muteBtn.addEventListener('click', (e) => { Sound.init(); toggleMute(); e.current
 function fit() {
     const s = Math.min(window.innerWidth / W, window.innerHeight / H) * 0.98;
     container.style.transform = `scale(${s})`;
-    const k = Math.min(3, Math.max(1, s * (window.devicePixelRatio || 1)));
+    const k = Math.min(2, Math.max(1, s * (window.devicePixelRatio || 1)));   // past 2x the canvas costs fill rate, not sharpness
     if (Math.abs(k - renderScale) > 0.01 || canvas.width !== Math.round(W * k)) {
         renderScale = k;
         canvas.width = Math.round(W * k);
@@ -635,6 +594,8 @@ function fit() {
         buildBackground();
     }
 }
-window.addEventListener('resize', fit);
-window.addEventListener('orientationchange', fit);
+let fitQueued = false;
+const fitSoon = () => { if (!fitQueued) { fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fit(); }); } };   // one rebuild per frame while dragging
+window.addEventListener('resize', fitSoon);
+window.addEventListener('orientationchange', fitSoon);
 
