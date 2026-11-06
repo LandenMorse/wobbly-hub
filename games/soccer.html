@@ -550,8 +550,8 @@
         const TARGETS = [3, 5, 7];
         const TIMES = [60, 90, 120];
 
-        // Cosmetics (skins, hats, boots, accessories, balls, arenas) live in cosmetics/:
-        // registry.js plus one file per pack under cosmetics/packs/. They are keyed by
+        // Cosmetics (skins, hats, boots, accessories, balls, arenas) live in shared/cosmetics/:
+        // registry.js plus one file per pack under shared/cosmetics/packs/ (listed in load.js). They are keyed by
         // stable string ids. Old saves and old clients referred to them by list
         // position, so these tables freeze that original order for migration.
         // See docs/COSMETICS.md before adding items.
@@ -2102,7 +2102,7 @@
         }
 
         // ---------- Player drawing ----------
-        // Every cosmetic layer is drawn by the registry (cosmetics/registry.js), which caches static items as sprites.
+        // Every cosmetic layer is drawn by the registry (shared/cosmetics/registry.js), which caches static items as sprites.
         const cosCtx = { r: 32, t: 0, look: 1, team: '', teamNum: 1, hat: null, zoom: 1 };
         function drawPlayer(g, p, skinId, hatId, bootId, accId, lookAt, t) {
             const r = p.radius;
