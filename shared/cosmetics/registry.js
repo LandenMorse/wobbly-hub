@@ -30,7 +30,8 @@
         boots: { label: 'Boots',     def: 'none',    layers: { main: [-1.2, 1.2, 1.2, 2.7] } },
         acc:   { label: 'Accessory', def: 'none',    layers: { main: [-1.7, -1.5, 1.7, 2.0] } },
         ball:  { label: 'Ball',      def: 'classic', layers: { main: [-1.25, -1.25, 1.25, 1.25] } },
-        arena: { label: 'Arena',     def: 'night',   layers: {} }
+        arena: { label: 'Arena',     def: 'night',   layers: {} },
+        emote: { label: 'Emote',     def: 'wave',    layers: { main: [-1.25, -1.25, 1.25, 1.25] } }   // a picture a player sends; shown in a bubble above them
     };
     const COMMON_KEYS = ['id', 'name', 'rarity', 'tags', 'anim', 'cache', 'bounds', 'hidden', 'desc'];
     const CATEGORY_KEYS = {
@@ -39,7 +40,8 @@
         boots: ['colors', 'under', 'over', 'draw'],
         acc:   ['draw'],
         ball:  ['fill', 'pattern', 'draw', 'outline', 'trail', 'goal', 'fx'],
-        arena: ['sky', 'ground', 'grass', 'line', 'net', 'post']
+        arena: ['sky', 'ground', 'grass', 'line', 'net', 'post'],
+        emote: ['draw']
     };
     const RARITIES = ['common', 'rare', 'epic', 'legendary'];
     const FX_PRESETS = ['fire', 'sparkle', 'smoke'];
@@ -372,6 +374,7 @@
             }
         },
         acc: { main(g, it, c) { if (it.draw) it.draw(g, c); } },
+        emote: { main(g, it, c) { if (it.draw) it.draw(g, c); } },
         ball: {
             main(g, it, c) {
                 if (it.draw) { it.draw(g, c); return; }
@@ -498,7 +501,7 @@
         opts = opts || {};
         const out = problems.slice();
         if (!hasDOM) return out;
-        const R = { skin: 32, hat: 32, boots: 32, acc: 32, ball: 18 };
+        const R = { skin: 32, hat: 32, boots: 32, acc: 32, ball: 18, emote: 18 };
         const add = (level, it, msg) => out.push({ level, pack: it.pack, category: it.category, id: it.id, msg });
         const variants = [{ look: 1, team: '#00d2ff', teamNum: 1 }, { look: -1, team: '#ff3838', teamNum: 2 }];
         const bare = { id: 'none', clearTop: true };

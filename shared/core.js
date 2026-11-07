@@ -151,7 +151,7 @@ const net = {
     inputs: {}, inSeqs: {}, inSeq: 0, local: { l: false, r: false, j: false, d: false }, touch: { j: false, d: false },
     rtc: null, rtcs: {}, rtcTries: 0,
     snaps: [], renderT: -1, appliedT: -1, latestT: -1, latestAt: 0,
-    fx: [], fxOut: [], fxN: 0, fxSeen: 0, sndDepth: 0, away: {}
+    fx: [], fxOut: [], fxN: 0, fxSeen: 0, sndDepth: 0, away: {}, emoteAt: {}
 };
 
 // =====================================================================

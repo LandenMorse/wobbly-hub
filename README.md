@@ -20,4 +20,6 @@ Pads in every game area of the hub (hold on one): 1v1 and 2v2 ranked queue for a
 
 Tests: `node tools/e2e.js` (pages load, the ranked queue and match flow in `?nettest`, walkovers, the peer-to-peer link and its fallback; needs Playwright), and the SQL tests in `supabase/tests/` (see [supabase/README.md](supabase/README.md)).
 
+Emotes (`shared/emotes.js`, items in `shared/cosmetics/packs/emote-*.js`): keys 1-8 send one in the hub and in a match, `Q` or the 😀 button opens the picker. In the hub it is one small message on the player's own line; in a match a guest's goes to the host (data channel first) and rides on the snapshots the host already sends. Each player is limited to one per 1.5 s, and a setting hides other players' emotes. No migration needed.
+
 Cosmetics: [docs/COSMETICS.md](docs/COSMETICS.md). Check them with `node tools/cosmetics.js check`.
